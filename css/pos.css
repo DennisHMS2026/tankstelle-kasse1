@@ -719,3 +719,306 @@ main > div[hidden] { display: none !important; }
 /* Suchleiste im Shop: Suchfeld nimmt den Platz, Schaltflächen behalten ihre Breite */
 .shop-top .shop-search { flex: 1 1 320px; width: auto; }
 .shop-top .btn { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
+
+/* =====================================================================
+   KOMPAKTES TANKSTELLEN-LAYOUT (iPad). Schmale Statusleiste, Warenkorb links,
+   Zapfsäulen rechts, Funktionsleiste unten. Hochformat: Reiter.
+   Automatisch nach Viewport: kleine Höhe oder Breite -> kompakt.
+   ===================================================================== */
+
+/* Statusleiste: Tankstelle, Kassierer, Schicht, Uhrzeit, Gesamtbetrag */
+#topbar { min-height: 52px; padding: env(safe-area-inset-top) 12px 0 12px; gap: 12px; align-items: center; }
+#topbar .tb-brand { font-size: 13px; }
+#topbar-status { color: #e8edf2; }
+#topbar-status .statusbar { display: flex; align-items: center; gap: 18px; min-height: 0; padding: 0; background: none; border: 0; flex-wrap: nowrap; width: 100%; }
+#topbar-status .sb-item { display: flex; flex-direction: column; justify-content: center; min-width: 0; line-height: 1.15; }
+#topbar-status .sb-label { font-size: 11px; color: #9aa6b2; text-transform: uppercase; letter-spacing: .04em; }
+#topbar-status .sb-item > span:last-child { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+#topbar-status .sb-schicht.ok { color: #7fe0a2 !important; }
+#topbar-status .sb-schicht.warn { color: #ffcf7a !important; }
+#topbar-status .sb-badges { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+#topbar-status .sb-badges .badge { font-size: 11px; }
+#topbar-status .sb-total { margin-left: auto; flex-direction: column; align-items: flex-end; }
+#topbar-status .sb-total .sb-label { color: #9aa6b2; }
+#topbar-status .sb-gesamt { font-size: 24px !important; font-weight: 800; font-variant-numeric: tabular-nums; color: #ffd66b !important; }
+#topbar-status .sb-clock { font-variant-numeric: tabular-nums; }
+#topbar .pill { min-height: 36px; display: inline-flex; align-items: center; }
+
+/* Navigation links, kompakt */
+#rail { width: 96px; flex: 0 0 96px; padding: 8px 6px; gap: 6px; }
+.rail-btn { min-height: 76px; font-size: 13px; padding: 6px 2px; border-radius: 10px; }
+.rail-btn svg { width: 28px; height: 28px; }
+
+/* Kassenraster: Warenkorb 58 %, Zapfsäulen 42 % */
+#view-kasse .kasse { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+#view-kasse .kasse-tabs { display: none; }
+#view-kasse .kasse-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); gap: 8px; padding: 8px; }
+
+/* Warenkorb: Positionen scrollen, Gesamtbetrag bleibt stehen */
+#view-kasse .bon-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+#view-kasse .bon-head { font-size: 12px; padding: 6px 10px; }
+#view-kasse .bon-lines { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#view-kasse .bon-line { font-size: 16px; padding: 7px 10px; grid-template-columns: 40px 52px minmax(0, 1fr) 96px 110px; }
+#view-kasse .bon-line .c-name { line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+#view-kasse .bon-sub { font-size: 13px; padding: 1px 10px 2px 92px; }
+#view-kasse .bon-totals { flex: 0 0 auto; padding: 8px 12px; border-top: 2px solid var(--line); background: var(--panel); }
+#view-kasse .tot-grid { gap: 0; }
+#view-kasse .tot-row { font-size: 14px; }
+#view-kasse .tot-row.zs { margin-top: 0; padding-top: 2px; }
+#view-kasse .gesamt { margin: 4px 0; padding: 4px 0; }
+#view-kasse .gesamt span { font-size: 15px; }
+#view-kasse .gesamt strong { font-size: 34px; white-space: nowrap; }
+#view-kasse .rest { font-size: 16px; margin-top: 0; }
+#view-kasse .rest strong { font-size: 22px; }
+#view-kasse .payments { font-size: 13px; }
+#view-kasse .training-box { font-size: 14px; padding: 6px 10px; }
+#view-kasse .line-actions { padding: 5px 8px; gap: 5px; }
+#view-kasse .line-actions .btn { min-height: 44px; font-size: 14px; }
+
+/* Zapfsäulen-Raster (2 Spalten × 4 Zeilen) */
+#view-kasse .pump-mini-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; gap: 6px; }
+#view-kasse .pmp-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+#view-kasse .pump-mini-grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.pm {
+  display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; gap: 2px; min-width: 0; min-height: 0;
+  padding: 6px 8px; border: 2px solid var(--line); border-radius: 10px; background: #fff; color: #1d2630; text-align: left; cursor: pointer; font: inherit;
+}
+.pm:active { transform: scale(.98); }
+.pm-no { font-size: 14px; font-weight: 800; white-space: nowrap; }
+.pm-state { align-self: flex-start; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 2px 6px; border-radius: 4px; white-space: nowrap; background: var(--panel-2); color: #1d2630; }
+.pm-fuel { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-amount { font-size: 19px; font-weight: 800; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pm.st-frei { border-color: #6fb487; background: #f1faf4; }
+.pm.st-frei .pm-state { background: #d4efdc; color: #14532d; }
+.pm.st-entnommen { border-color: #6d9bd6; background: #eef4fc; }
+.pm.st-entnommen .pm-state { background: #cfe0f7; color: #1e3a66; }
+.pm.st-wartet { border-color: #d9a52f; background: #fff9ea; }
+.pm.st-wartet .pm-state { background: #fbe4a6; color: #6b4300; }
+.pm.st-tankt { border-color: #1f5fa8; background: #e8f1fb; box-shadow: inset 0 0 0 1px #1f5fa8; }
+.pm.st-tankt .pm-state { background: #1f5fa8; color: #fff; }
+.pm.st-beendet { border-color: #2a8f8a; background: #e9f7f6; }
+.pm.st-beendet .pm-state { background: #bfe7e3; color: #0f4f4b; }
+.pm.st-zahlung { border-color: #e07b00; background: #fff3e2; }
+.pm.st-zahlung .pm-state { background: #e07b00; color: #fff; }
+.pm.st-bezahlt { border-color: #1b7a3d; background: #eaf7ee; }
+.pm.st-bezahlt .pm-state { background: #1b7a3d; color: #fff; }
+.pm.st-gesperrt { border-color: #7d8792; background: repeating-linear-gradient(45deg, #f2f4f6, #f2f4f6 8px, #e4e8ec 8px, #e4e8ec 16px); }
+.pm.st-gesperrt .pm-state { background: #5b6774; color: #fff; }
+.pm.st-stoerung { border-color: var(--bad); background: #fdecea; }
+.pm.st-stoerung .pm-state { background: var(--bad); color: #fff; }
+
+/* Funktionsleiste unten: ARTIKEL, MENGE, STORNO, LEERGUT, BAR, KARTE, MEHR */
+#view-kasse .actionbar { flex: 0 0 auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+#view-kasse .fn-btn { min-height: 62px; font-size: 16px; font-weight: 800; border-radius: 10px; letter-spacing: .02em; }
+#view-kasse .fn-btn .k { display: none; }
+#view-kasse .fn-btn[data-action="BAR"], #view-kasse .fn-btn[data-action="KARTE"] { background: linear-gradient(#2d6fbb, var(--accent-2)); color: #fff; border-color: var(--accent-2); }
+#view-kasse .fn-btn[data-action="POS_STORNO"] { color: var(--bad); }
+#view-kasse .fn-btn.active { background: #ffe9b3; border-color: #d19a2f; color: #1d2630; }
+#view-kasse .fn-btn:disabled { opacity: .4; }
+
+/* Scan-Ziel: bleibt für Scanner im Fokus, ist aber unsichtbar */
+.scan-target { position: absolute; width: 1px; height: 1px; opacity: 0; left: -9999px; pointer-events: none; }
+
+/* Bottom-Sheet für Zapfsäulen */
+.modal-overlay:has(.modal.sheet) { align-items: flex-end; padding: 0; }
+.modal.sheet { width: min(680px, 100%); max-height: 74dvh; border-radius: 18px 18px 0 0; }
+.modal.sheet .modal-body { padding: 12px 16px 16px; }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.sheet-head strong { font-size: 22px; }
+.sheet-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.kv { background: var(--panel-2); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kv-l { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.kv-v { font-size: 20px; font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+.sheet-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sheet-actions .btn.big { min-height: 56px; font-size: 16px; }
+.pm-badge { padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 13px; text-transform: uppercase; background: var(--panel-2); color: #1d2630; }
+.pm-badge.st-frei { background: #d4efdc; color: #14532d; } .pm-badge.st-entnommen { background: #cfe0f7; color: #1e3a66; }
+.pm-badge.st-wartet { background: #fbe4a6; color: #6b4300; } .pm-badge.st-tankt { background: #1f5fa8; color: #fff; }
+.pm-badge.st-beendet { background: #bfe7e3; color: #0f4f4b; } .pm-badge.st-zahlung { background: #e07b00; color: #fff; }
+.pm-badge.st-bezahlt { background: #1b7a3d; color: #fff; } .pm-badge.st-gesperrt { background: #5b6774; color: #fff; }
+.pm-badge.st-stoerung { background: var(--bad); color: #fff; }
+
+/* Artikelauswahl (eigene kompakte Ansicht) */
+.modal.article-sheet { width: min(980px, 96vw); max-height: 92dvh; }
+.article-picker { display: grid; gap: 10px; }
+.pick-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.pick-search, .pick-scan { width: 100%; min-height: 56px; font-size: 18px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #111; }
+.pick-favs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pick-favs .fav-tile { min-height: 64px; }
+.pick-cats { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick-cats .cat-tile { min-height: 44px; padding: 8px 12px; font-size: 15px; width: auto; }
+.pick-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; align-content: start; }
+.pick-item { min-height: 60px; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #1d2630; text-align: left; font: inherit; cursor: pointer; }
+.pick-item:active { background: var(--sel); }
+.pick-name { font-size: 16px; font-weight: 600; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+.pick-price { font-size: 17px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Weitere Funktionen */
+.modal.more-sheet { width: min(760px, 100%); }
+.more-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.more-btn { min-height: 64px; font-size: 16px; }
+
+/* Zahlungsdialog: links Betrag und Rückgeld, rechts Nummernfeld und Geldscheine */
+.modal.wide .cash.cash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; row-gap: 8px; align-items: start; }
+.cash-grid > * { grid-column: 1; min-width: 0; }
+.cash-grid > .numpad { grid-column: 2; grid-row: 1 / span 6; max-width: none; }
+.cash-grid > .quick { grid-column: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.cash-grid > .quick .btn { min-height: 52px; font-size: 16px; padding: 4px; }
+.cash-grid .cash-due strong { font-size: 40px; font-variant-numeric: tabular-nums; }
+.cash-grid .big-change { font-size: 36px; margin: 4px 0; }
+.cash-grid input[type="text"] { font-size: 28px; min-height: 60px; font-family: var(--mono); }
+.cash-grid .compose { grid-column: 1 / -1; }
+
+/* Kartenterminal */
+.terminal { display: grid; gap: 12px; }
+.terminal-screen { font-size: 20px; min-height: 0; padding: 16px 18px; }
+
+/* Hochformat: Reiter statt nebeneinander */
+@media (orientation: portrait) {
+  #body { flex-direction: column; }
+  #rail { width: auto; flex: 0 0 auto; flex-direction: row; height: 62px; padding: 6px 8px; gap: 6px; }
+  .rail-btn { flex-direction: row; min-height: 50px; font-size: 14px; gap: 8px; justify-content: center; }
+  .rail-btn svg { width: 24px; height: 24px; }
+  #view-kasse .kasse-tabs { display: flex; gap: 8px; padding: 8px 8px 0 8px; }
+  .ktab { flex: 1 1 0; min-height: 52px; font-size: 16px; font-weight: 800; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #1d2630; cursor: pointer; }
+  .ktab.active { background: #1f5fa8; color: #fff; border-color: #174a84; }
+  #view-kasse .kasse-body { grid-template-columns: minmax(0, 1fr); }
+  #view-kasse .kasse[data-tab="cart"] .pump-mini-panel { display: none; }
+  #view-kasse .kasse[data-tab="pumps"] .bon-panel { display: none; }
+  #view-kasse .kasse[data-tab="pumps"] .pump-mini-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  #view-kasse .actionbar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #view-kasse .fn-btn { min-height: 58px; font-size: 15px; }
+  .modal.wide .cash.cash-grid { grid-template-columns: minmax(0, 1fr); }
+  .cash-grid > .numpad, .cash-grid > .quick { grid-column: 1; grid-row: auto; }
+  .more-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pick-results { grid-template-columns: minmax(0, 1fr); }
+  /* Hinweis zum Querformat: dezent, nicht blockierend */
+  body::after {
+    content: 'Tipp: Für die Kasse ist das Querformat ideal.';
+    position: fixed; right: 12px; bottom: 6px; padding: 4px 10px; border-radius: 999px;
+    background: rgba(30, 40, 50, .75); color: #fff; font-size: 12px; font-weight: 600; z-index: 300; pointer-events: none;
+  }
+}
+
+/* Kompakt: automatisch bei kleiner Höhe oder Breite (Safari-Leisten), oder manuell */
+@media (landscape) and (max-height: 820px) {
+  body:not(.dm-standard) { --compact: 1; }
+}
+@media (max-height: 820px), (max-width: 1100px) {
+  body:not(.dm-standard) #topbar-status .statusbar { gap: 12px; }
+  body:not(.dm-standard) #rail { width: 84px; flex-basis: 84px; padding: 6px 4px; }
+  body:not(.dm-standard) .rail-btn { min-height: 66px; font-size: 12px; }
+  body:not(.dm-standard) #view-kasse .kasse-body { padding: 6px; gap: 6px; }
+  body:not(.dm-standard) #view-kasse .fn-btn { min-height: 54px; font-size: 14px; }
+  body:not(.dm-standard) #view-kasse .pm-amount { font-size: 17px; }
+  body:not(.dm-standard) #view-kasse .bon-line { font-size: 15px; padding: 5px 8px; }
+}
+body.dm-compact #topbar-status .statusbar { gap: 12px; }
+body.dm-compact #rail { width: 84px; flex-basis: 84px; padding: 6px 4px; }
+body.dm-compact .rail-btn { min-height: 66px; font-size: 12px; }
+body.dm-compact #view-kasse .kasse-body { padding: 6px; gap: 6px; }
+body.dm-compact #view-kasse .fn-btn { min-height: 54px; font-size: 14px; }
+body.dm-compact #view-kasse .pm-amount { font-size: 17px; }
+body.dm-compact #view-kasse .bon-line { font-size: 15px; padding: 5px 8px; }
+body.dm-standard #rail { width: 112px; flex-basis: 112px; }
+body.dm-standard .rail-btn { min-height: 92px; font-size: 14px; }
+body.dm-standard #view-kasse .kasse-body { padding: 12px; gap: 12px; }
+body.dm-standard #view-kasse .fn-btn { min-height: 70px; font-size: 17px; }
+body.dm-standard #view-kasse .pm-amount { font-size: 22px; }
+
+/* Kein horizontales Scrollen in der Hauptansicht */
+main, #view-kasse, .kasse, .kasse-body { overflow-x: hidden; max-width: 100%; }
+
+/* Kopfzeile: Gesamtbetrag in einer Zeile, Badges kleiner, nichts überlappt */
+#topbar { min-height: 60px; }
+#topbar-status .statusbar { gap: 14px; }
+#topbar-status .sb-total { flex-direction: row; align-items: baseline; gap: 8px; margin-left: auto; flex: 0 0 auto; }
+#topbar-status .sb-gesamt { font-size: 22px !important; }
+#topbar-status .sb-item > span:last-child { max-width: 170px; }
+#topbar-status .sb-badges { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+#topbar-status .sb-badges .badge { padding: 1px 5px; font-size: 10px; }
+#topbar-status .sb-label { font-size: 10px; }
+
+/* Hochformat: Navigation als Zeile oben, Kopfzeile schlank, Hinweis ohne Überlagerung */
+@media (orientation: portrait) {
+  body #rail, body:not(.dm-standard) #rail, body.dm-compact #rail, body.dm-standard #rail {
+    width: auto !important; flex: 0 0 auto !important; flex-basis: auto !important; background: #151d25;
+  }
+  body #rail .rail-btn { color: #d4dce4; }
+  body #rail .rail-btn.active { color: #fff; }
+  #topbar .tb-brand { display: none; }
+  #topbar-status .sb-item:nth-child(1), #topbar-status .sb-badges { display: none; }
+  #topbar-status .statusbar { gap: 10px; }
+  #topbar-status .sb-item > span:last-child { max-width: 140px; }
+  body::after { content: none !important; display: none !important; }
+}
+@media (orientation: portrait) {
+  #view-kasse .kasse[data-tab="pumps"] .pm { padding: 12px 14px; }
+  #view-kasse .kasse[data-tab="pumps"] .pm-no { font-size: 17px; }
+  #view-kasse .kasse[data-tab="pumps"] .pm-state { font-size: 13px; padding: 4px 8px; }
+  #view-kasse .kasse[data-tab="pumps"] .pm-fuel { font-size: 18px; }
+  #view-kasse .kasse[data-tab="pumps"] .pm-amount { font-size: 28px; }
+}
+#modal-root .modal-overlay:has(.modal.sheet) { align-items: flex-end; padding: 0; }
+/* Artikelauswahl: Schnelltasten und Kategorien kompakt, Trefferliste sofort sichtbar */
+.pick-favs { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.pick-favs .fav-tile { min-height: 58px; padding: 6px; }
+.pick-favs .fav-name { font-size: 12px; }
+.pick-favs .fav-price { font-size: 14px; }
+.pick-cats { gap: 6px; }
+.pick-cats .cat-tile { min-height: 38px; padding: 6px 10px; font-size: 14px; }
+.pick-results { max-height: 50dvh; }
+.pick-top .pick-search, .pick-top .pick-scan { min-height: 50px; }
+
+/* Bargeld-Automat (Simulation): Dialog, Anzeige, Stückelungstasten, Einwurf und Rückgeld */
+.automat-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px; align-items: start; }
+.automat-display { display: flex; flex-direction: column; gap: 8px; }
+.ad-row { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--line); padding: 4px 0; font-size: 15px; }
+.ad-val { font-size: 18px; font-variant-numeric: tabular-nums; }
+.ad-big { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+.ad-big > span { font-size: 14px; color: var(--muted); }
+.ad-big > strong { font-size: 30px; font-variant-numeric: tabular-nums; }
+.ad-big.ok > strong { color: #1d7a3f; }
+.ad-big.bad > strong { color: #b3261e; }
+.ad-plan { font-size: 15px; color: var(--text); }
+.ad-state { font-weight: 600; padding: 8px 12px; border-radius: 8px; background: var(--panel-2); }
+.ad-state.ok { background: #e3f4e8; color: #1d7a3f; }
+.ad-state.busy { background: #e4eefc; color: #1d4f9a; }
+.ad-state.warn { background: #fff1d6; color: #7a5200; }
+.ad-state.bad { background: #fde3e1; color: #b3261e; }
+.ad-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ad-chips .chip { padding: 3px 9px; border-radius: 999px; background: var(--panel-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ad-fault { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: #fde3e1; color: #b3261e; }
+.ad-warn { margin: 0; padding-left: 18px; font-size: 13px; color: #7a5200; }
+.ad-msg { padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.ad-msg.ok { background: #e3f4e8; color: #1d7a3f; }
+.ad-msg.bad { background: #fde3e1; color: #b3261e; }
+.ak-group + .ak-group { margin-top: 10px; }
+.ak-title { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.ak-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ak-btn { min-height: 56px; border-radius: 10px; border: 1px solid #b9c6d6; background: linear-gradient(#ffffff, #e9eff6); font-size: 17px; font-weight: 600; touch-action: manipulation; }
+.ak-btn.schein { background: linear-gradient(#eef7ef, #d6ead9); border-color: #9fc7a6; }
+.ak-btn:disabled { opacity: .4; cursor: not-allowed; }
+.ak-btn:active:not(:disabled) { transform: scale(.97); }
+.ak-slot { position: relative; margin-top: 12px; height: 64px; border-radius: 10px; border: 2px dashed #b9c6d6; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.ak-drop { font-size: 20px; font-weight: 700; animation: ak-fall .6s ease-out both; }
+.ak-drop.coin { animation-name: ak-fall; }
+.ak-drop.note { animation-name: ak-slide; }
+@keyframes ak-fall { 0% { transform: translateY(-40px); opacity: 0; } 60% { transform: translateY(4px); opacity: 1; } 100% { transform: translateY(0); } }
+@keyframes ak-slide { 0% { transform: translateX(-120px); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+.change-out { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-radius: 10px; background: #fff8e6; min-height: 60px; align-items: center; }
+.change-piece { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #ffd966; font-weight: 700; animation: ak-pop .5s ease-out both; }
+.change-piece.note { background: #bfe3c8; border-radius: 6px; }
+@keyframes ak-pop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.automat-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; margin: 6px 0; border-radius: 8px; background: #e4eefc; color: #1d4f9a; font-size: 14px; }
+.automat-slot-banner:empty { display: none; }
+.automat-admin .card + .card { margin-top: 12px; }
+@media (max-width: 1100px), (max-height: 820px) {
+  .automat-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .ak-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .ak-btn { min-height: 50px; font-size: 16px; }
+  .ad-big > strong { font-size: 24px; }
+}
+@media (max-width: 820px) and (orientation: portrait) {
+  .automat-body { grid-template-columns: minmax(0, 1fr); }
+}

@@ -130,6 +130,11 @@
           out.push(row('', 'gegeben', M.formatPlain(p.given), W));
           out.push(row('', 'Rückgeld', M.formatPlain(p.change), W));
         }
+      } else if (p.type === 'AUTOMAT') {
+        out.push(row('', 'Zahlungsart: BAR – AUTOMAT', '', W).trimEnd());
+        out.push(row('', 'Rechnungsbetrag', M.formatPlain(p.cents), W));
+        out.push(row('', 'Eingezahlt', M.formatPlain(p.given), W));
+        out.push(row('', 'Rückgeld', M.formatPlain(p.change), W));
       } else if (p.type === 'KARTE') {
         out.push(row('', 'Karte (SIMULATION)', M.formatPlain(p.cents), W));
         if (p.ref) out.push(row('', `Autorisierung ${p.ref}`, '', W).trimEnd());

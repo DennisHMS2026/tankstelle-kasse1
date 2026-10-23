@@ -108,9 +108,12 @@
       throw new Error(`Datenstand ${obj.schemaVersion} ist neuer als diese Version (${SCHEMA_VERSION})`);
     }
     // Schritt 1 -> 2: Tankstelle (Kraftstoffe, Zapfsäulen, Tankvorgänge, Tankstellenartikel).
-    // Bestehende Daten bleiben erhalten, siehe POS.Seed.upgradeToV2.
-    const state = obj.schemaVersion === 1 ? POS.Seed.upgradeToV2(obj) : obj;
-    for (const key of ['settings', 'categories', 'deposits', 'articles', 'staff', 'shifts', 'cashMoves', 'sales', 'stockMoves', 'vouchers', 'events', 'trainingResults', 'counters', 'fuels', 'pumps', 'tanks']) {
+    // Schritt 2 -> 3: Bargeld-Automat (Bestand, Bewegungen, offene Sitzung).
+    // Bestehende Daten bleiben erhalten, siehe POS.Seed.upgradeToV2 und upgradeToV3.
+    let state = obj;
+    if (state.schemaVersion < 2) state = POS.Seed.upgradeToV2(state);
+    if (state.schemaVersion < 3) state = POS.Seed.upgradeToV3(state);
+    for (const key of ['settings', 'categories', 'deposits', 'articles', 'staff', 'shifts', 'cashMoves', 'sales', 'stockMoves', 'vouchers', 'events', 'trainingResults', 'counters', 'fuels', 'pumps', 'tanks', 'automat', 'automatMoves', 'automatSessions']) {
       if (!(key in state)) throw new Error(`Datensicherung unvollständig: ${key} fehlt`);
     }
     state.trainingCustomer = state.trainingCustomer || null;
@@ -152,6 +155,26 @@
     for (const k of lists) if (!Array.isArray(s[k])) errs.push(`${k}: keine Liste`);
     if (errs.length) return errs;
     if (!s.counters || typeof s.counters !== 'object') errs.push('Zähler fehlen');
+    if (!Array.isArray(s.automatMoves)) errs.push('automatMoves: keine Liste');
+    else {
+      for (const m of s.automatMoves) {
+        if (!isInt(m.count) || !isInt(m.cents) || !POS.Automat.denom(m.denom) || m.cents !== m.denom * m.count) {
+          errs.push(`Automat-Bewegung ${m.id || '?'}: Stückzahl oder Betrag ungültig`);
+        }
+      }
+      const c = POS.Automat.counts(s);
+      for (const x of POS.Automat.DENOMS) {
+        if (c[x.value] < 0) errs.push(`Automat: Bestand ${POS.Automat.label(x.value)} wäre negativ`);
+      }
+    }
+    if (!s.automat || !Array.isArray(s.automat.slots)) errs.push('Automat: Konfiguration fehlt');
+    else if (!['BETRIEBSBEREIT', 'STOERUNG', 'AUSSER_BETRIEB'].includes(s.automat.mode)) errs.push('Automat: unbekannter Betriebszustand');
+    if (s.automatSession) {
+      const ses = s.automatSession;
+      if (!isInt(ses.dueCents) || !Array.isArray(ses.deposits) || ses.deposits.some((x) => !POS.Automat.denom(x.denom))) {
+        errs.push('Automat-Sitzung: Einzahlungen ungültig');
+      }
+    }
     s.articles.forEach((a) => {
       if (!a.id || !a.name) errs.push(`Artikel ohne ID oder Name`);
       if (!isInt(a.priceCents) || a.priceCents < 0) errs.push(`Artikel ${a.id || '?'}: Preis ist keine ganze Cent-Zahl`);

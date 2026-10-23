@@ -15,21 +15,6 @@
   const S = () => POS.App.S;
 
   // Funktionstasten der Kassiererfunktionen (Reihenfolge wie im Pflichtenheft)
-  const BOTTOM_BAR = [
-    ['BON_STORNO', 'BON STORNO'],
-    ['POS_STORNO', 'POSITION STORNO'],
-    ['MENGE', 'MENGE'],
-    ['PREIS', 'PREISABFRAGE'],
-    ['LEERGUT', 'LEERGUT'],
-    ['ZWISCHENSUMME', 'ZWISCHENSUMME'],
-    ['BAR', 'BAR'],
-    ['KARTE', 'KARTE'],
-    ['KASSENLADE', 'KASSENLADE'],
-    ['BON_DRUCKEN', 'BON DRUCKEN'],
-    ['KASSIERERWECHSEL', 'KASSIERERWECHSEL'],
-    ['SCHICHTENDE', 'SCHICHTENDE'],
-  ];
-
   const ACTION_LABEL = {
     SUCHE: 'Artikelsuche',
     MENGE: 'Menge ändern',
@@ -38,6 +23,7 @@
     LEERGUT: 'Leergut',
     ZWISCHENSUMME: 'Zwischensumme',
     BAR: 'Barzahlung',
+    AUTOMAT: 'Bar – Automat',
     KARTE: 'Kartenzahlung',
     BON_DRUCKEN: 'Bon drucken',
     KASSIERERWECHSEL: 'Kassiererwechsel',
@@ -62,25 +48,66 @@
 
   function buildStatusbar() {
     els.market = h('span', { class: 'sb-market' });
-    els.kasse = h('span', { class: 'sb-kasse' });
     els.kassierer = h('span', { class: 'sb-kassierer' });
     els.schicht = h('span', { class: 'sb-schicht' });
-    els.scanner = h('span', { class: 'sb-scanner' });
-    els.drucker = h('span', { class: 'sb-drucker', title: P.status() });
-    els.bonnr = h('span', { class: 'sb-bonnr' });
     els.clock = h('span', { class: 'sb-clock' });
+    els.gesamt = h('span', { class: 'sb-gesamt', text: '0,00 €' });
     els.badges = h('span', { class: 'sb-badges' });
+    const item = (label, value) => h('div', { class: 'sb-item' }, h('span', { class: 'sb-label', text: label }), value);
     return h(
-      'header',
+      'div',
       { class: 'statusbar', id: 'statusbar' },
-      h('div', { class: 'sb-left' }, els.market),
-      h('div', { class: 'sb-cells' }, cell('Kasse', els.kasse), cell('Kassierer', els.kassierer), cell('Schicht', els.schicht), cell('Scanner', els.scanner), cell('Drucker', els.drucker), cell('Bon', els.bonnr), cell('Datum / Zeit', els.clock)),
-      h('div', { class: 'sb-right' }, els.badges)
+      item('Tankstelle', els.market),
+      item('Kassierer', els.kassierer),
+      item('Schicht', els.schicht),
+      item('Uhrzeit', els.clock),
+      els.badges,
+      h('div', { class: 'sb-item sb-total' }, h('span', { class: 'sb-label', text: 'Gesamt' }), els.gesamt)
     );
   }
 
-  function cell(label, valueEl) {
-    return h('div', { class: 'sb-cell' }, h('span', { class: 'sb-label', text: label }), valueEl);
+  /** Kassenansicht: Warenkorb links, acht Zapfsäulen rechts, Funktionsleiste unten. */
+  function buildKasse() {
+    els.barcode = h('input', { id: 'barcode', class: 'scan-target', type: 'text', inputmode: 'none', autocomplete: 'off', spellcheck: 'false', tabindex: '-1', 'aria-label': 'Barcode-Eingabe (Scanner)' });
+    els.barcode.addEventListener('keydown', onBarcodeKeydown);
+    els.cartPanel = buildBon();
+    els.pumpPanel = POS.PumpView.buildMini();
+    const tabs = h('div', { class: 'kasse-tabs', role: 'tablist' }, tabBtn('cart', 'Warenkorb'), tabBtn('pumps', 'Zapfsäulen'));
+    return h('div', { class: 'kasse', 'data-tab': 'cart' }, tabs, h('div', { class: 'kasse-body' }, els.cartPanel, els.pumpPanel), buildActionbar(), els.barcode);
+  }
+
+  function tabBtn(key, label) {
+    return h('button', { class: 'ktab', type: 'button', 'data-tab': key, onclick: () => setKasseTab(key), text: label });
+  }
+
+  /** Hochformat: Warenkorb und Zapfsäulen wechseln als Reiter. */
+  function setKasseTab(key) {
+    const root = document.querySelector('#view-kasse .kasse');
+    if (!root) return;
+    root.dataset.tab = key;
+    root.querySelectorAll('.ktab').forEach((b) => b.classList.toggle('active', b.dataset.tab === key));
+  }
+
+  const TOUCH_BAR = [
+    ['ARTIKEL', 'ARTIKEL'],
+    ['MENGE', 'MENGE'],
+    ['POS_STORNO', 'STORNO'],
+    ['LEERGUT', 'LEERGUT'],
+    ['BAR', 'BAR'],
+    ['AUTOMAT', 'AUTOMAT'],
+    ['KARTE', 'KARTE'],
+    ['MEHR', 'MEHR'],
+  ];
+
+  function buildActionbar() {
+    els.actions = TOUCH_BAR.map(([action, label]) => h('button', { class: 'fn-btn', type: 'button', 'data-action': action, onclick: () => touchAction(action), text: label }));
+    return h('footer', { class: 'actionbar', 'aria-label': 'Kassierfunktionen' }, els.actions);
+  }
+
+  function touchAction(action) {
+    if (action === 'ARTIKEL') return openArticlePicker();
+    if (action === 'MEHR') return openMoreMenu();
+    return runAction(action);
   }
 
   function buildBon() {
@@ -96,6 +123,7 @@
       h('button', { class: 'btn danger', type: 'button', onclick: positionStorno, text: 'Position stornieren (F4)' })
     );
     els.totals = h('div', { class: 'bon-totals' });
+    els.automat = h('div', { class: 'automat-slot-banner' });
     return h(
       'section',
       { class: 'bon-panel', 'aria-label': 'Bonanzeige' },
@@ -108,6 +136,7 @@
         h('span', { class: 'r', text: 'Einzelpreis' }),
         h('span', { class: 'r', text: 'Summe' })
       ),
+      els.automat,
       els.lines,
       els.lineActions,
       els.training,
@@ -115,61 +144,10 @@
     );
   }
 
-  function buildSide() {
-    els.barcode = h('input', {
-      id: 'barcode',
-      class: 'big-input',
-      type: 'text',
-      inputmode: 'none',
-      autocomplete: 'off',
-      spellcheck: 'false',
-      placeholder: 'Scannen oder Code eingeben',
-      'aria-label': 'Barcode-Eingabe',
-    });
-    els.plu = h('input', { id: 'plu', type: 'text', inputmode: 'none', autocomplete: 'off', placeholder: 'PLU', 'aria-label': 'PLU-Eingabe' });
-    els.qty = h('input', { id: 'qty', type: 'text', inputmode: 'none', autocomplete: 'off', value: '1', 'aria-label': 'Mengenfeld' });
-
-    els.barcode.addEventListener('keydown', onBarcodeKeydown);
-    els.qty.addEventListener('input', () => setPendingQty(els.qty.value));
-    const pluSubmit = () => {
-      const v = els.plu.value.trim();
-      els.plu.value = '';
-      if (v) handleCode(v, 'PLU');
-    };
-    els.pluBtn = h('button', { class: 'btn big wide', type: 'button', onclick: pluSubmit, text: 'PLU übernehmen' });
-
-    return h(
-      'aside',
-      { class: 'side-panel', 'aria-label': 'Kassenbedienung' },
-      h(
-        'div',
-        { class: 'scanbox' },
-        h('label', { class: 'field-label', for: 'barcode', text: 'Barcode / Scan' }),
-        els.barcode,
-        h('div', { class: 'hint', text: 'Bluetooth-Scanner: einfach scannen. Ohne Scanner: Code eingeben.' }),
-        h('button', { class: 'btn big wide', type: 'button', onclick: () => manualCode(), text: 'Code eingeben' })
-      ),
-      h('div', { class: 'row2' }, h('button', { class: 'btn big wide', type: 'button', onclick: () => openSearch(''), text: 'Artikelsuche' }), h('button', { class: 'btn big wide', type: 'button', onclick: () => POS.App.showView('shop'), text: 'Shop öffnen' })),
-      h('div', { class: 'section-title', text: 'Menge für den nächsten Artikel' }),
-      els.qty,
-      h('div', { class: 'section-title', text: 'PLU-Nummer' }),
-      els.plu,
-      els.pluBtn,
-      POS.Ui.numpad([els.qty, els.plu], { decimal: false, maxLen: 6 })
-    );
-  }
-
-  function buildActionbar() {
-    els.actions = BOTTOM_BAR.map(([action, label]) =>
-      h('button', { class: 'fn-btn', type: 'button', 'data-action': action, onclick: () => runAction(action) }, h('span', { class: 'k' }), h('span', { class: 'l', text: label }))
-    );
-    return h('footer', { class: 'actionbar', 'aria-label': 'Kassiererfunktionen' }, els.actions);
-  }
-
   /** Einmaliger Aufbau der Kassenansicht. Danach aktualisiert render() nur die Inhalte. */
   function init() {
     document.getElementById('topbar-status').replaceChildren(buildStatusbar());
-    document.getElementById('view-kasse').replaceChildren(h('div', { class: 'pos-main' }, buildBon(), buildSide()), buildActionbar());
+    document.getElementById('view-kasse').replaceChildren(buildKasse());
     document.getElementById('view-pumps').replaceChildren(POS.PumpView.build());
     document.getElementById('view-shop').replaceChildren(POS.ShopView.build());
 
@@ -201,21 +179,16 @@
     const shift = L.currentShift(s);
 
     els.market.textContent = s.settings.marketName;
-    els.kasse.textContent = s.settings.kassenNr;
-    els.kassierer.textContent = cashier ? cashier.name : '–';
+    els.kassierer.textContent = cashier ? `${cashier.nr} ${cashier.name}` : '–';
     els.schicht.textContent = shift ? `offen seit ${new Date(shift.openedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : 'keine Schicht';
     els.schicht.className = 'sb-schicht ' + (shift ? 'ok' : 'warn');
-    els.scanner.textContent = (s.settings.scannerVerified ? 'getestet' : 'nicht getestet') + (ui.lastSource ? ` · zuletzt ${ui.lastSource === 'SCANNER' ? 'Scanner' : 'manuell'}` : '');
-    els.drucker.textContent = 'Browserdruck';
-    els.bonnr.textContent = cart ? `${cart.lines.length} Pos. · offen` : `nächste ${'B-' + String((s.counters.bon || 0) + 1).padStart(6, '0')}`;
+    els.gesamt.textContent = M.formatEuro(cart ? R.computeTotals(cart).gesamt : 0);
     els.badges.replaceChildren(
       ...[
         ui.mode === 'PREIS' ? h('span', { class: 'badge amber', text: 'PREISABFRAGE' }) : null,
         ui.pendingQty > 1 ? h('span', { class: 'badge', text: `MENGE ${ui.pendingQty}x` }) : null,
         s.settings.trainingMode ? h('span', { class: 'badge violet', text: 'TRAINING' }) : null,
         POS.Store.mode === 'memory' ? h('span', { class: 'badge red', text: 'NUR ARBEITSSPEICHER' }) : null,
-        POS.Store.mode === 'localstorage' ? h('span', { class: 'badge amber', text: 'localStorage' }) : null,
-        h('span', { class: 'badge simbadge', text: 'SIMULATION' }),
       ].filter(Boolean)
     );
 
@@ -223,13 +196,14 @@
     els.lineActions.hidden = !selectedLine();
     renderTotals(cart);
     renderTraining(s);
+    const automatBanner = POS.AutomatView.banner(s);
+    els.automat.replaceChildren(...(automatBanner ? [automatBanner] : []));
+    POS.AutomatView.refresh();
     els.actions.forEach((btn) => {
       const action = btn.dataset.action;
-      btn.querySelector('.k').textContent = keyOf(action);
-      btn.classList.toggle('active', action === 'PREIS' && ui.mode === 'PREIS');
-      btn.disabled = !shift && !['KASSIERERWECHSEL', 'BON_DRUCKEN'].includes(action);
+      btn.disabled = !shift && ['BAR', 'AUTOMAT', 'KARTE', 'LEERGUT', 'ARTIKEL'].includes(action);
+      btn.classList.toggle('active', action === 'MENGE' && ui.pendingQty > 1);
     });
-    renderSide(s);
     POS.PumpView.update(s);
   }
 
@@ -301,7 +275,7 @@
     const row = (label, value, cls = '') => h('div', { class: 'tot-row ' + cls }, h('span', { text: label }), h('strong', { class: 'r', text: value }));
     const payments = cart
       ? cart.payments.map((p) =>
-          h('div', { class: 'pay-row' }, h('span', { text: p.type === 'BAR' ? `Bar${p.given !== undefined ? ` (gegeben ${M.formatPlain(p.given)})` : ''}` : p.type === 'KARTE' ? 'Karte (Simulation)' : 'Auszahlung' }), h('span', { class: 'r', text: M.formatPlain(p.cents) })))
+          h('div', { class: 'pay-row' }, h('span', { text: p.type === 'BAR' ? `Bar${p.given !== undefined ? ` (gegeben ${M.formatPlain(p.given)})` : ''}` : p.type === 'AUTOMAT' ? `Bar – Automat (eingezahlt ${M.formatPlain(p.given)})` : p.type === 'KARTE' ? 'Karte (Simulation)' : 'Auszahlung' }), h('span', { class: 'r', text: M.formatPlain(p.cents) })))
       : [];
     // replaceChildren() schreibt null als Text „null“, daher leere Teile vorher herausfiltern
     els.totals.replaceChildren(...[
@@ -352,14 +326,10 @@
     );
   }
 
-  function renderSide(s) {
-    if (els.pluBtn) els.pluBtn.disabled = !els.plu.value;
-  }
-
-  function setPendingQty(text) {
-    const n = parseInt(text, 10);
+  /** Menge für den nächsten Artikel (1 bis 999). */
+  function setPendingQty(value) {
+    const n = parseInt(value, 10);
     ui.pendingQty = Number.isInteger(n) && n >= 1 && n <= 999 ? n : 1;
-    els.qty.value = String(ui.pendingQty);
     render();
   }
 
@@ -491,6 +461,7 @@
   }
 
   async function addArticle(art, qty, source) {
+    if (S().automatSession) return toast('Automat-Zahlung läuft – erst abschließen oder abbrechen', 'warn');
     if (art.ageCheck) {
       const ok = await ageCheckDialog(art);
       if (!ok) return;
@@ -589,6 +560,154 @@
     });
   }
 
+  const MORE_ITEMS = [
+    ['BON_STORNO', 'Bon stornieren'],
+    ['ZWISCHENSUMME', 'Zwischensumme'],
+    ['PREIS', 'Preisabfrage'],
+    ['KASSENLADE', 'Kassenlade'],
+    ['BON_DRUCKEN', 'Bon drucken'],
+    ['KASSIERERWECHSEL', 'Kassierer wechseln'],
+    ['SCHICHTENDE', 'Schichtende'],
+    ['PREISTAFEL', 'Preistafel'],
+    ['SUCHE', 'Artikelsuche (Tastatur)'],
+    ['VOLLBILD', 'Vollbild'],
+  ];
+
+  /** Weitere, seltener benötigte Funktionen. */
+  function openMoreMenu() {
+    let entry = null;
+    entry = POS.Ui.openModal({
+      title: 'Weitere Funktionen',
+      cls: 'more-sheet',
+      content: h(
+        'div',
+        { class: 'more-grid' },
+        MORE_ITEMS.map(([action, label]) =>
+          h('button', {
+            class: 'btn big more-btn',
+            type: 'button',
+            onclick: () => {
+              entry.close();
+              runAction(action);
+            },
+            text: label,
+          })
+        )
+      ),
+      actions: [{ label: 'Schließen' }],
+    });
+  }
+
+  /** Artikelauswahl: Suche, Barcodeeingabe, Kategorien, Schnelltasten und Trefferliste. */
+  function openArticlePicker() {
+    if (!app().user) return;
+    let entry = null;
+    let cat = null;
+    let times = [];
+    const search = h('input', { type: 'search', class: 'pick-search', placeholder: 'Artikel suchen (Name, EAN, PLU)', autocomplete: 'off', 'aria-label': 'Artikelsuche' });
+    const scan = h('input', {
+      type: 'text',
+      class: 'pick-scan',
+      inputmode: 'none',
+      autocomplete: 'off',
+      spellcheck: 'false',
+      placeholder: 'Barcode scannen oder Code eingeben',
+      'aria-label': 'Barcodeeingabe',
+      'data-allow-scan': true,
+      'data-autofocus': true,
+    });
+    const cats = h('div', { class: 'pick-cats' });
+    const favs = h('div', { class: 'pick-favs' });
+    const results = h('div', { class: 'pick-results' });
+    const choose = (fn) => {
+      entry.close();
+      fn();
+    };
+    scan.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const code = scan.value.trim();
+        const info = POS.Scanner.classify(times, app().settings());
+        times = [];
+        scan.value = '';
+        if (code) choose(() => handleCode(code, info.source));
+        return;
+      }
+      if (e.key.length === 1) times = POS.Scanner.pushTime(times, performance.now());
+    });
+    const drawCats = () =>
+      cats.replaceChildren(
+        ...[{ id: null, name: 'Alle' }, ...S().categories].map((c) =>
+          h('button', {
+            class: 'cat-tile' + (cat === c.id ? ' active' : ''),
+            type: 'button',
+            onclick: () => {
+              cat = c.id;
+              drawCats();
+              drawResults();
+            },
+            text: c.name,
+          })
+        )
+      );
+    const drawFavs = () =>
+      favs.replaceChildren(
+        ...S()
+          .settings.favorites.map((id) => S().articles.find((a) => a.id === id))
+          .filter(Boolean)
+          .map((a) =>
+            h(
+              'button',
+              { class: 'fav-tile', type: 'button', onclick: () => choose(() => articleClicked(a.id)) },
+              h('span', { class: 'fav-name', text: a.name }),
+              h('span', { class: 'fav-price', text: M.formatEuro(a.priceCents) })
+            )
+          )
+      );
+    const drawResults = () => {
+      const q = search.value.trim().toLowerCase();
+      const list = S()
+        .articles.filter((a) => a.active && (!cat || a.category === cat) && (!q || a.name.toLowerCase().includes(q) || a.ean === q || a.plu === q))
+        .slice(0, 80);
+      results.replaceChildren(
+        ...(list.length
+          ? list.map((a) =>
+              h(
+                'button',
+                { class: 'pick-item', type: 'button', onclick: () => choose(() => articleClicked(a.id)) },
+                h('span', { class: 'pick-name', text: a.name }),
+                h('span', { class: 'pick-price', text: M.formatEuro(a.priceCents) })
+              )
+            )
+          : [h('div', { class: 'hint big-hint', text: 'Keine Treffer' })])
+      );
+    };
+    search.addEventListener('input', drawResults);
+    entry = POS.Ui.openModal({
+      title: 'Artikel',
+      wide: true,
+      cls: 'article-sheet',
+      content: h('div', { class: 'article-picker' }, h('div', { class: 'pick-top' }, search, scan), favs, cats, results),
+      actions: [{ label: 'Schließen' }],
+    });
+    drawCats();
+    drawFavs();
+    drawResults();
+  }
+
+  /** Menge für den nächsten Artikel, wenn keine Position gewählt ist. */
+  function openQtyDialog() {
+    const input = h('input', { type: 'text', inputmode: 'none', value: String(ui.pendingQty), 'aria-label': 'Menge', 'data-autofocus': true });
+    POS.Ui.openModal({
+      title: 'Menge für den nächsten Artikel',
+      content: h('div', { class: 'form qty-dialog' }, h('p', { class: 'hint', text: 'Gilt für den nächsten Artikel, der erfasst wird.' }), input, POS.Ui.numpad(input, { decimal: false, maxLen: 3 })),
+      actions: [
+        { label: 'Abbrechen' },
+        { label: 'Übernehmen', primary: true, run: () => setPendingQty(input.value) },
+      ],
+    });
+  }
+
   function runAction(action) {
     switch (action) {
       case 'SUCHE':
@@ -607,6 +726,8 @@
         return openTotalsDialog();
       case 'BAR':
         return openCash();
+      case 'AUTOMAT':
+        return POS.AutomatView.open();
       case 'KARTE':
         return openCard();
       case 'BON_DRUCKEN':
@@ -621,6 +742,10 @@
         return shiftEnd();
       case 'VOLLBILD':
         return toggleFullscreen();
+      case 'PREISTAFEL':
+        return POS.App.showView('board');
+      case 'SUCHE':
+        return openSearch('');
       case 'ESC':
         return cancelMode();
       default:
@@ -636,11 +761,7 @@
 
   function changeQtyAction() {
     const line = selectedLine();
-    if (!line) {
-      els.qty.focus();
-      els.qty.select();
-      return toast('Menge für den nächsten Artikel eintragen, dann scannen. Oder eine Position wählen.', 'info');
-    }
+    if (!line) return openQtyDialog();
     if (line.kind !== 'ART') return toast('Gutschriften können nicht geändert werden', 'warn');
     const input = h('input', { type: 'text', inputmode: 'numeric', value: String(line.qty), 'data-autofocus': true, 'aria-label': 'Neue Menge' });
     openModal({
@@ -774,6 +895,7 @@
     const s = S();
     const cart = s.cart;
     if (!cart || !cart.lines.length) return toast('Kein Bon vorhanden', 'warn');
+    if (s.automatSession) return toast('Automat-Zahlung läuft – bitte dort abschließen oder abbrechen', 'warn');
     if (!L.currentShift(s)) return errorToast(R.fail('SCHICHT_NICHT_OFFEN', 'Keine offene Schicht'));
     const totals = R.computeTotals(cart);
     if (totals.gesamt < 0) return payoutDialog(totals.gesamt);
@@ -833,7 +955,7 @@
 
     const content = h(
       'div',
-      { class: 'cash' },
+      { class: 'cash cash-grid' },
       h('div', { class: 'cash-due' }, h('span', { text: 'Gesamtbetrag' }), h('strong', { text: M.formatEuro(due) })),
       h('label', { class: 'field-label', text: 'Gegeben (€)' }),
       givenInput,
@@ -897,7 +1019,7 @@
   }
 
   function showSaleDone(sale) {
-    const change = sale.payments.find((p) => p.type === 'BAR' && p.change !== undefined);
+    const change = sale.payments.find((p) => (p.type === 'BAR' || p.type === 'AUTOMAT') && p.change !== undefined);
     const changeCents = change ? change.change : 0;
     const tr = sale.training;
     const body = h(
@@ -905,7 +1027,7 @@
       { class: 'done' },
       sale.totals.gesamt < 0 ? h('div', { class: 'big-change ok', text: `Auszahlung ${M.formatEuro(-sale.totals.gesamt)}` }) : null,
       changeCents ? h('div', { class: 'big-change ok', text: `Rückgeld ${M.formatEuro(changeCents)}` }) : null,
-      changeCents ? h('div', { class: 'hint', text: R.changeBreakdown(changeCents).map((b) => `${b.count}× ${M.formatPlain(b.value)} €`).join(', ') }) : null,
+      changeCents ? h('div', { class: 'hint', text: (change.rueckgeld || R.changeBreakdown(changeCents)).map((b) => `${b.count}× ${M.formatPlain(b.value)} €`).join(', ') }) : null,
       h('p', { text: `Bon ${sale.bonNr} · Gesamt ${M.formatEuro(sale.totals.gesamt)}` }),
       h('p', { class: 'hint', text: 'SIMULATION – keine echte Zahlung' }),
       tr
@@ -934,6 +1056,7 @@
     if (!cart || !cart.lines.length) return toast('Kein Bon vorhanden', 'warn');
     if (!L.currentShift(s)) return errorToast(R.fail('SCHICHT_NICHT_OFFEN', 'Keine offene Schicht'));
     const totals = R.computeTotals(cart);
+    if (s.automatSession) return toast('Automat-Zahlung läuft – bitte dort abschließen oder abbrechen', 'warn');
     if (totals.gesamt <= 0) return toast('Bei diesem Bon wird nichts per Karte kassiert', 'warn');
     const due = C.dueCents(cart);
     const screen = h('div', { class: 'terminal-screen', role: 'status' });
@@ -1239,9 +1362,20 @@
     const approver = await requestApproval('SCHICHTLEITUNG', 'Schichtende und Kassenabschluss');
     if (!approver) return;
     const counted = h('input', { type: 'text', inputmode: 'decimal', 'data-autofocus': true, placeholder: 'z. B. 250,00', 'aria-label': 'Gezählter Kassenbestand' });
+    // Automat wird getrennt von der Lade abgerechnet (kein Doppelzählen der Kundenzahlungen)
+    const machineExpected = L.automatShiftSummary(s, shift).automatExpectedCents;
+    const machineCounted = h('input', { type: 'text', inputmode: 'decimal', value: machineExpected === null ? '' : M.formatPlain(machineExpected), 'aria-label': 'Automat gezählter Bestand' });
     openModal({
       title: 'Kassenabschluss',
-      content: h('div', { class: 'form' }, h('p', { text: 'Bargeld in der Lade zählen und eingeben. Der Sollbestand wird nach dem Abschluss angezeigt.' }), h('label', {}, 'Istbestand (€)', counted), POS.Ui.numpad(counted, { decimal: true })),
+      content: h(
+        'div',
+        { class: 'form' },
+        h('p', { text: 'Bargeld in der Lade zählen und eingeben. Der Sollbestand wird nach dem Abschluss angezeigt.' }),
+        h('label', {}, 'Istbestand Lade (€)', counted),
+        h('label', {}, 'Istbestand Automat (€)', machineCounted),
+        h('p', { class: 'hint', text: machineExpected === null ? 'Automat-Anfangsbestand fehlt.' : `Automat-Sollbestand: ${M.formatEuro(machineExpected)} (Anfang, Einzahlungen, Rückgeld, Befüllung und Entleerung).` }),
+        POS.Ui.numpad([counted, machineCounted], { decimal: true })
+      ),
       actions: [
         { label: 'Abbrechen' },
         {
@@ -1249,10 +1383,12 @@
           primary: true,
           run: async () => {
             const cents = M.parseEuro(counted.value);
-            if (cents === null || cents < 0) throw R.fail('BETRAG_UNGUELTIG', 'Istbestand ungültig');
+            if (cents === null || cents < 0) throw R.fail('BETRAG_UNGUELTIG', 'Istbestand Lade ungültig');
+            const machine = M.parseEuro(machineCounted.value);
+            if (machine === null || machine < 0) throw R.fail('BETRAG_UNGUELTIG', 'Istbestand Automat ungültig');
             let closed;
             await app().mutate((d) => {
-              closed = L.closeShift(d, { countedCents: cents, approverId: approver, cashierId: app().user.id });
+              closed = L.closeShift(d, { countedCents: cents, machineCountedCents: machine, approverId: approver, cashierId: app().user.id });
             });
             showShiftReport(closed, () => app().logout());
             return true;
@@ -1315,6 +1451,7 @@
     init,
     render,
     runAction,
+    showSaleDone,
     handleCode,
     articleClicked,
     manualCode,

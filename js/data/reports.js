@@ -190,6 +190,7 @@
     const s = shift.report || POS.Ledger.shiftSummary(d, shift);
     const cashier = (d.staff.find((x) => x.id === shift.cashierId) || {}).name || shift.cashierId;
     const euro = (c) => M.formatPlain(c);
+    const opt = (c) => (c === null || c === undefined ? '–' : euro(c));
     return [
       ['Schicht', shift.id],
       ['Kassierer', cashier],
@@ -211,6 +212,18 @@
       ['Kassendifferenz', shift.diffCents === null ? '–' : euro(shift.diffCents)],
       ['Anzahl Verkäufe', String(s.anzahlVerkaeufe)],
       ['Anzahl Stornos', String(s.anzahlStornos)],
+      // Bargeld-Automat: getrennt von der Kassenlade (keine Doppelzählung)
+      ['— Bargeld-Automat —', ''],
+      ['Automat Anfangsbestand', opt(s.automatStartCents)],
+      ['Umsatz BAR – AUTOMAT', opt(s.automatUmsatz)],
+      ['Automat eingezahlt', opt(s.automatEingezahlt)],
+      ['Automat Rückgeld', opt(s.automatRueckgeld)],
+      ['Automat Erstattungen', opt(s.automatErstattet)],
+      ['Automat befüllt aus Lade', opt(s.automatBefuellt)],
+      ['Automat entleert in Lade', opt(s.automatEntleert)],
+      ['Automat erwarteter Bestand', opt(s.automatExpectedCents)],
+      ['Automat gezählter Bestand', opt(shift.machineCountedCents)],
+      ['Automatendifferenz', opt(shift.machineDiffCents)],
     ];
   }
 

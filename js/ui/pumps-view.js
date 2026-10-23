@@ -49,6 +49,105 @@
     ['reset', 'Zurücksetzen', ''],
   ];
 
+  const SHORT_FUEL = { 'Super E5': 'E5', 'Super E10': 'E10', 'Super Plus': 'Super+', Diesel: 'Diesel', 'Premium Diesel': 'Prem. Diesel', AdBlue: 'AdBlue' };
+  const SHORT_STATE = {
+    FREI: 'Frei',
+    ENTNOMMEN: 'Pistole',
+    WARTET_FREIGABE: 'Wartet',
+    TANKT: 'Tankt',
+    BEENDET: 'Beendet',
+    ZAHLUNG_AUSSTEHEND: 'Zahlung',
+    BEZAHLT: 'Bezahlt',
+    GESPERRT: 'Gesperrt',
+    STOERUNG: 'Störung',
+  };
+
+  let mini = {};
+  let miniGrid = null;
+
+  /** Kompakte Zapfsäulen für die Kassenansicht (2 Spalten × 4 Zeilen). */
+  function buildMini() {
+    mini = {};
+    miniGrid = h('div', { class: 'pump-mini-grid' });
+    for (const p of app().S.pumps) {
+      const el = h(
+        'button',
+        { class: 'pm', type: 'button', 'data-pump': String(p.id), 'aria-label': `Zapfsäule ${p.id}`, onclick: () => openSheet(p.id) },
+        h('span', { class: 'pm-no', text: `Zapfsäule ${p.id}` }),
+        h('span', { class: 'pm-state' }),
+        h('span', { class: 'pm-fuel' }),
+        h('span', { class: 'pm-amount' })
+      );
+      mini[p.id] = { el, state: el.querySelector('.pm-state'), fuel: el.querySelector('.pm-fuel'), amount: el.querySelector('.pm-amount') };
+      miniGrid.append(el);
+    }
+    return h('section', { class: 'pump-mini-panel', 'aria-label': 'Zapfsäulen' }, h('div', { class: 'pmp-head' }, h('strong', { text: 'Zapfsäulen' }), h('span', { class: 'hint', text: 'Antippen für Details' })), miniGrid);
+  }
+
+  function updateMini(S, now) {
+    if (!miniGrid) return;
+    for (const pump of S.pumps) {
+      const m = mini[pump.id];
+      if (!m) continue;
+      const v = valuesOf(S, pump, now);
+      m.el.className = `pm ${STATE_CLASS[pump.status] || ''}`;
+      m.state.textContent = SHORT_STATE[pump.status] || pump.status;
+      m.fuel.textContent = SHORT_FUEL[v.fuel] || v.fuel;
+      m.amount.textContent = M.formatEuro(v.cents);
+    }
+  }
+
+  /** Detailblatt einer Zapfsäule. Werte aktualisieren sich, solange es offen ist. */
+  function openSheet(pumpId) {
+    let entry = null;
+    let timer = null;
+    const body = h('div', { class: 'sheet-body' });
+    const kv = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'kv-l', text: label }), h('strong', { class: 'kv-v', text: value }));
+    const sbtn = (label, cls, enabled, fn) =>
+      h('button', {
+        class: 'btn big ' + cls,
+        type: 'button',
+        disabled: !enabled,
+        onclick: async () => {
+          entry.close();
+          await fn();
+        },
+        text: label,
+      });
+    const draw = () => {
+      const S1 = app().S;
+      const p = S1.pumps.find((x) => x.id === pumpId);
+      if (!p) return;
+      const v = valuesOf(S1, p, Date.now());
+      const tank = p.tankId ? S1.tanks.find((t) => t.id === p.tankId) : null;
+      const offer = !!tank && tank.status === 'OFFEN';
+      body.replaceChildren(
+        h('div', { class: 'sheet-head' }, h('strong', { text: `Zapfsäule ${p.id}` }), h('span', { class: `pm-badge ${STATE_CLASS[p.status] || ''}`, text: P.LABEL[p.status] || p.status })),
+        h('div', { class: 'sheet-kv' }, kv('Kraftstoff', v.fuel), kv('Literpreis', F.formatPricePerLiter(v.price)), kv('Getankt', litersText(v.ml)), kv('Gesamtbetrag', M.formatEuro(v.cents))),
+        h(
+          'div',
+          { class: 'sheet-actions' },
+          sbtn('Freigeben', 'primary', p.status === 'WARTET_FREIGABE', () => act('release', pumpId)),
+          sbtn('Pistole entnehmen (Sim)', '', p.status === 'FREI', () => act('lift', pumpId)),
+          sbtn('Sperren', '', p.status === 'FREI' || p.status === 'WARTET_FREIGABE', () => act('lock', pumpId)),
+          sbtn('Entsperren', '', p.status === 'GESPERRT', () => act('unlock', pumpId)),
+          sbtn('Tankvorgang stoppen', 'danger', p.status === 'TANKT', () => act('stop', pumpId)),
+          sbtn('Tankbetrag übernehmen', 'primary', offer, () => attach(tank.id)),
+          sbtn('Schließen', '', true, () => {})
+        )
+      );
+    };
+    entry = POS.Ui.openModal({
+      title: `Zapfsäule ${pumpId}`,
+      cls: 'sheet',
+      content: body,
+      actions: [],
+      onClose: () => clearInterval(timer),
+    });
+    draw();
+    timer = setInterval(draw, 500);
+  }
+
   let panel = null;
   let autoBtn = null;
   let pumpGrid = null;
@@ -130,7 +229,9 @@
 
   /** Schnelle Aktualisierung (ohne Speichern), wird regelmäßig aufgerufen. */
   function live(S) {
-    if (!panel || !S) return;
+    if (!S) return;
+    updateMini(S, Date.now());
+    if (!panel) return;
     const now = Date.now();
     for (const pump of S.pumps) {
       const tile = tiles[pump.id];
@@ -147,6 +248,7 @@
   }
 
   function update(S) {
+    updateMini(S, Date.now());
     if (!panel) return;
     const now = Date.now();
     autoBtn.textContent = S.settings.fuelAuto ? 'Automatik: EIN' : 'Automatik: AUS';
@@ -265,5 +367,5 @@
     }
   }
 
-  POS.PumpView = { build, update, live };
+  POS.PumpView = { build, buildMini, update, live, openSheet };
 })(typeof window !== 'undefined' ? window : globalThis);

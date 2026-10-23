@@ -78,6 +78,11 @@
       countedCents: null,
       expectedCents: null,
       diffCents: null,
+      // Bargeld-Automat: eigener Bestand, getrennt von der Kassenlade
+      machineStartCents: POS.Automat.totalCents(d),
+      machineCountedCents: null,
+      machineExpectedCents: null,
+      machineDiffCents: null,
     };
     d.shifts.push(shift);
     logEvent(d, { type: 'SCHICHT_START', text: `Schicht ${shift.id} gestartet, Anfangsbestand ${M.formatEuro(startCents)}`, cashierId, shiftId: shift.id, now });
@@ -122,12 +127,37 @@
       expectedCents,
       countedCents: shift.countedCents,
       diffCents: shift.diffCents,
+      ...automatShiftSummary(d, shift),
     };
   }
 
-  function closeShift(d, { countedCents, approverId, cashierId, now = new Date() }) {
+  /**
+   * Bargeld-Automat getrennt von der Kassenlade. Kundenzahlungen und Rückgeld laufen nur über
+   * den Automaten, Befüllung und Entleerung bewegen Bargeld zwischen Lade und Automat.
+   */
+  function automatShiftSummary(d, shift) {
+    const moves = (d.automatMoves || []).filter((m) => m.shiftId === shift.id);
+    const sumType = (type, sign = 1) => moves.filter((m) => m.type === type).reduce((s, m) => s + sign * m.cents, 0);
+    const umsatz = d.sales
+      .filter((s) => s.shiftId === shift.id && s.kind === 'VERKAUF')
+      .reduce((s, sale) => s + sale.payments.filter((p) => p.type === 'AUTOMAT').reduce((a, p) => a + p.cents, 0), 0);
+    const start = shift.machineStartCents === undefined ? null : shift.machineStartCents;
+    return {
+      automatStartCents: start,
+      automatUmsatz: umsatz,
+      automatEingezahlt: sumType('EINZAHLUNG'),
+      automatRueckgeld: sumType('RUECKGELD', -1),
+      automatErstattet: sumType('ERSTATTUNG', -1),
+      automatBefuellt: sumType('BEFUELLUNG'),
+      automatEntleert: sumType('ENTLEERUNG', -1),
+      automatExpectedCents: start === null ? null : start + moves.reduce((s, m) => s + m.cents, 0),
+    };
+  }
+
+  function closeShift(d, { countedCents, machineCountedCents, approverId, cashierId, now = new Date() }) {
     const shift = requireShift(d);
     if (d.cart && d.cart.lines.length) throw fail('WARENKORB_NICHT_LEER', 'Schicht kann nicht abgeschlossen werden, solange ein Bon offen ist');
+    assertNoSession(d);
     if (d.tanks.some((t) => t.status === 'OFFEN' || t.status === 'IM_WARENKORB')) {
       throw fail('OFFENE_TANKVORGAENGE', 'Vor Schichtende müssen alle Tankvorgänge bezahlt oder storniert sein');
     }
@@ -135,16 +165,22 @@
       throw fail('ZAPFSAEULE_AKTIV', 'Eine Zapfsäule ist noch in Betrieb (Kunde am Zapfhahn)');
     }
     M.assertCents(countedCents, 'Istbestand');
+    M.assertCents(machineCountedCents, 'Automat-Istbestand');
+    const auto = automatShiftSummary(d, shift);
+    if (auto.automatExpectedCents === null) throw fail('AUTOMAT_STARTWERT_FEHLT', 'Automat-Anfangsbestand dieser Schicht fehlt');
     shift.countedCents = countedCents;
     const summary = shiftSummary(d, shift);
     shift.expectedCents = summary.expectedCents;
     shift.diffCents = countedCents - summary.expectedCents;
+    shift.machineCountedCents = machineCountedCents;
+    shift.machineExpectedCents = auto.automatExpectedCents;
+    shift.machineDiffCents = machineCountedCents - auto.automatExpectedCents;
     shift.endedAt = now.toISOString();
     shift.status = 'GESCHLOSSEN';
-    shift.report = { ...summary, diffCents: shift.diffCents };
+    shift.report = { ...summary, diffCents: shift.diffCents, machineDiffCents: shift.machineDiffCents };
     logEvent(d, {
       type: 'SCHICHT_ENDE',
-      text: `Schicht ${shift.id} geschlossen, Differenz ${M.formatEuro(shift.diffCents)}`,
+      text: `Schicht ${shift.id} geschlossen, Kassendifferenz ${M.formatEuro(shift.diffCents)}, Automatendifferenz ${M.formatEuro(shift.machineDiffCents)}`,
       cashierId,
       approverId,
       shiftId: shift.id,
@@ -167,6 +203,10 @@
     const totals = R.computeTotals(cart);
     const paid = POS.Cart.paidSum(cart);
     if (paid !== totals.gesamt) throw fail('ZAHLUNG_UNVOLLSTAENDIG', 'Die Zahlung deckt den Gesamtbetrag nicht');
+    // Ein Bon mit laufender Automat-Zahlung darf nur über den Automaten abgeschlossen werden
+    if (d.automatSession && d.automatSession.cartId === cart.id && !cart.payments.some((p) => p.type === 'AUTOMAT')) {
+      throw fail('AUTOMAT_SITZUNG_OFFEN', 'Eine Automat-Zahlung läuft für diesen Bon. Bitte dort abschließen oder abbrechen.');
+    }
 
     const codes = [];
     for (const line of cart.lines) {
@@ -242,6 +282,7 @@
   /** Bon-Storno vor Abschluss. Erfordert eine Freigabe, die der Aufrufer bereits geprueft hat. */
   function cancelBon(d, { cashierId, approverId, reason, now = new Date() }) {
     const shift = requireShift(d);
+    assertNoSession(d);
     if (!d.cart || d.cart.lines.length === 0) throw fail('WARENKORB_LEER', 'Kein Bon zum Stornieren vorhanden');
     if (!reason || !reason.trim()) throw fail('GRUND_FEHLT', 'Bitte einen Grund für den Bon-Storno angeben');
     const totals = R.computeTotals(d.cart);
@@ -261,6 +302,7 @@
   /** Einzelne Position stornieren (normale Kassiererfunktion). */
   function removePosition(d, { lineId, cashierId, now = new Date() }) {
     const shift = requireShift(d);
+    assertNoSession(d);
     const { cart, removed } = POS.Cart.removeLine(d.cart, lineId);
     const amount = removed.kind === 'GUTSCHRIFT' ? removed.cents : R.lineGrossCents(removed);
     if (removed.kind === 'KRAFTSTOFF') POS.Pumps.detachFromCart(d, d.tanks.find((t) => t.id === removed.tankId));
@@ -526,6 +568,297 @@
     return existing;
   }
 
+  // ---------------------------------------------------------------- Bargeld-Automat
+
+  const A = () => POS.Automat;
+
+  /** Eine Bewegung im Automaten. count > 0: Zugang in den Automaten, count < 0: Abgang. */
+  function automatMove(d, { type, denom, count, ref = null, reason = '', cashierId = null, shiftId = null, now = new Date() }) {
+    d.automatMoves.push({ id: nextId(d, 'automatmove'), ts: now.toISOString(), shiftId, type, denom, count, cents: denom * count, ref, reason, cashierId });
+  }
+
+  function openAutomatSession(d) {
+    return d.automatSession && d.automatSession.status === 'OFFEN' ? d.automatSession : null;
+  }
+
+  function requireSession(d) {
+    const s = openAutomatSession(d);
+    if (!s) throw fail('AUTOMAT_KEINE_SITZUNG', 'Keine offene Automat-Zahlung');
+    return s;
+  }
+
+  function assertNoSession(d) {
+    if (d.automatSession) throw fail('AUTOMAT_SITZUNG_OFFEN', 'Eine Automat-Zahlung läuft. Erst abschließen oder abbrechen.');
+  }
+
+  function slotFor(d, value) {
+    const sl = A().slot(d, value);
+    if (!sl) throw fail('AUTOMAT_NICHT_AKZEPTIERT', `${A().label(value)} wird vom Automaten nicht geführt`);
+    return sl;
+  }
+
+  function assertMachineReady(d) {
+    const fault = d.automat.fault ? d.automat.fault.reason : '';
+    if (d.automat.mode === 'AUSSER_BETRIEB') throw fail('AUTOMAT_AUSSER_BETRIEB', `Automat außer Betrieb${fault ? ': ' + fault : ''}`);
+    if (d.automat.mode === 'STOERUNG') throw fail('AUTOMAT_STOERUNG', `Automat-Störung${fault ? ': ' + fault : ''}`);
+  }
+
+  /** Mengenliste normalisieren: [{value, count}], nur Stückzahlen größer 0, ganzzahlig. */
+  function normalizeEntries(entries) {
+    const out = [];
+    for (const e of entries || []) {
+      if (!Number.isInteger(e.count) || e.count < 0) throw fail('MENGE_UNGUELTIG', 'Stückzahl muss eine ganze Zahl ab 0 sein');
+      if (e.count > 0) out.push({ value: e.value, count: e.count });
+    }
+    return out;
+  }
+
+  /** Startet eine Automat-Zahlung für den offenen Bon. Der Betrag wird damit eingefroren. */
+  function automatStart(d, { cashierId, now = new Date() } = {}) {
+    const shift = requireShift(d);
+    assertNoSession(d);
+    assertMachineReady(d);
+    const cart = d.cart;
+    if (!cart || !cart.lines.length) throw fail('WARENKORB_LEER', 'Der Warenkorb ist leer');
+    if (cart.payments.length) throw fail('ZAHLUNG_BEREITS_ERFASST', 'Für diesen Bon ist bereits eine Zahlung erfasst');
+    const totals = R.computeTotals(cart);
+    if (totals.gesamt <= 0) throw fail('NICHTS_ZU_ZAHLEN', 'Bei diesem Bon wird nichts über den Automaten kassiert');
+    const session = {
+      id: 'AZ' + pad(nextId(d, 'automatsession'), 6),
+      cartId: cart.id,
+      shiftId: shift.id,
+      cashierId,
+      dueCents: totals.gesamt,
+      deposits: [],
+      status: 'OFFEN',
+      startedAt: now.toISOString(),
+      closedAt: null,
+      bonNr: null,
+      change: [],
+      reason: null,
+    };
+    d.automatSession = session;
+    logEvent(d, { type: 'AUTOMAT_START', text: `Automat-Zahlung ${session.id} gestartet: ${M.formatEuro(session.dueCents)}`, cashierId, shiftId: shift.id, data: { sessionId: session.id }, now });
+    return session;
+  }
+
+  /** Ein angenommenes Geldstück. Bestand und Sitzung werden gemeinsam geschrieben. */
+  function automatDeposit(d, { value, cashierId, now = new Date() }) {
+    const shift = requireShift(d);
+    const session = requireSession(d);
+    const sl = slotFor(d, value);
+    if (!sl.accepted) throw fail('AUTOMAT_NICHT_AKZEPTIERT', `${A().label(value)} ist in den Automat-Einstellungen nicht freigegeben`);
+    assertMachineReady(d);
+    const have = A().counts(d)[value] || 0;
+    if (have + 1 > sl.capacity) throw fail('AUTOMAT_BEHAELTER_VOLL', `Behälter ${A().label(value)} ist voll (${sl.capacity} Stück)`);
+    session.deposits.push({ id: `${session.id}-${session.deposits.length + 1}`, denom: value, ts: now.toISOString() });
+    automatMove(d, { type: 'EINZAHLUNG', denom: value, count: 1, ref: session.id, cashierId, shiftId: shift.id, now });
+    return { paidCents: A().sessionPaid(session), dueCents: session.dueCents };
+  }
+
+  /** Abgelehnt (Rückgabe an den Kunden). Nichts wird gebucht, Störungen setzen den Betriebszustand. */
+  function automatReject(d, { value, reason, cashierId, now = new Date() }) {
+    const shift = requireShift(d);
+    const session = requireSession(d);
+    if (!A().FAULT_LABEL[reason]) throw fail('STOERUNG_UNBEKANNT', 'Unbekannte Störung');
+    logEvent(d, {
+      type: 'AUTOMAT_ABGELEHNT',
+      text: `${A().label(value)}: ${A().FAULT_LABEL[reason]}`,
+      cashierId,
+      shiftId: shift.id,
+      data: { sessionId: session.id, value, reason },
+      now,
+    });
+    if (reason === 'SCHEIN_KLEMMT' || reason === 'AUSSER_BETRIEB') {
+      d.automat.mode = reason === 'SCHEIN_KLEMMT' ? 'STOERUNG' : 'AUSSER_BETRIEB';
+      d.automat.fault = { reason: A().FAULT_LABEL[reason], since: now.toISOString(), sessionId: session.id };
+    }
+  }
+
+  /**
+   * Abbruch der Automat-Zahlung. Vor der ersten Einzahlung passiert nichts am Bestand.
+   * Danach werden genau die eingezahlten Stücke wieder ausgegeben (virtuelle Erstattung).
+   */
+  function automatCancel(d, { cashierId, reason = '', now = new Date() }) {
+    const shift = requireShift(d);
+    const session = requireSession(d);
+    const paid = A().sessionPaid(session);
+    if (session.deposits.length && !(reason || '').trim()) throw fail('GRUND_FEHLT', 'Bitte einen Grund für den Abbruch angeben');
+    const need = {};
+    for (const x of session.deposits) need[x.denom] = (need[x.denom] || 0) + 1;
+    const have = A().counts(d);
+    for (const v of Object.keys(need)) {
+      if (have[v] < need[v]) throw fail('AUTOMAT_BESTAND_FEHLT', `Erstattung nicht möglich: ${A().label(Number(v))} fehlt im Automaten`);
+    }
+    const refund = Object.keys(need).map(Number).sort((a, b) => b - a);
+    for (const v of refund) {
+      automatMove(d, { type: 'ERSTATTUNG', denom: v, count: -need[v], ref: session.id, reason: (reason || '').trim(), cashierId, shiftId: shift.id, now });
+    }
+    session.status = 'ABGEBROCHEN';
+    session.closedAt = now.toISOString();
+    session.reason = (reason || '').trim() || null;
+    d.automatSessions.push(session);
+    d.automatSession = null;
+    logEvent(d, {
+      type: 'AUTOMAT_ABBRUCH',
+      text: paid ? `Automat-Zahlung ${session.id} abgebrochen, erstattet ${M.formatEuro(paid)}` : `Automat-Zahlung ${session.id} abgebrochen`,
+      cashierId,
+      shiftId: shift.id,
+      data: { sessionId: session.id },
+      now,
+    });
+    return { refundCents: paid, refund: refund.map((v) => ({ value: v, count: need[v] })) };
+  }
+
+  /**
+   * Abschluss: Bon wird bezahlt und das Rückgeld aus dem tatsächlichen Bestand herausgegeben.
+   * Gelingt die exakte Herausgabe nicht, bleibt alles offen und nichts wird gebucht.
+   * changeFault: simulierte Störung der Rückgeldeinheit (nur Trainingsmodus, siehe UI).
+   */
+  function automatComplete(d, { cashierId, changeFault = false, now = new Date() }) {
+    const shift = requireShift(d);
+    const session = requireSession(d);
+    const cart = d.cart;
+    const changed = fail('AUTOMAT_BON_GEAENDERT', 'Der Bon hat sich geändert. Bitte die Automat-Zahlung abbrechen und neu starten.');
+    if (!cart || cart.id !== session.cartId) throw changed;
+    if (cart.payments.length) throw fail('ZAHLUNG_BEREITS_ERFASST', 'Für diesen Bon ist bereits eine Zahlung erfasst');
+    const due = R.computeTotals(cart).gesamt;
+    if (due !== session.dueCents) throw changed;
+    const paid = A().sessionPaid(session);
+    if (paid < due) throw fail('ZAHLBETRAG_ZU_NIEDRIG', `Eingezahlt ${M.formatEuro(paid)}, offen ${M.formatEuro(due - paid)}`);
+    if (changeFault) throw fail('WECHSEL_STOERUNG', 'Rückgeldeinheit meldet eine Störung. Die Zahlung bleibt offen.');
+    const change = paid - due;
+    const plan = A().planChange(change, A().counts(d));
+    if (!plan.ok) {
+      throw fail('WECHSELGELD_NICHT_MOEGLICH', `Wechselgeld ${M.formatEuro(change)} kann mit dem Automatenbestand nicht exakt herausgegeben werden`);
+    }
+
+    // Ab hier nur noch Schreibzugriffe. Der Entwurf wird insgesamt gespeichert oder verworfen.
+    // rueckgeld: tatsächlich ausgegebene Stücke (nicht eine Standardaufteilung)
+    cart.payments.push({ type: 'AUTOMAT', cents: due, given: paid, change, sessionId: session.id, rueckgeld: plan.plan.map((p) => ({ ...p })) });
+    const sale = finalizeSale(d, { cashierId, now });
+    for (const step of plan.plan) {
+      automatMove(d, { type: 'RUECKGELD', denom: step.value, count: -step.count, ref: sale.bonNr, cashierId, shiftId: shift.id, now });
+    }
+    session.status = 'ABGESCHLOSSEN';
+    session.closedAt = now.toISOString();
+    session.bonNr = sale.bonNr;
+    session.change = plan.plan.map((p) => ({ ...p }));
+    d.automatSessions.push(session);
+    d.automatSession = null;
+    logEvent(d, {
+      type: 'AUTOMAT_ABGESCHLOSSEN',
+      text: `Automat-Zahlung zu ${sale.bonNr}: eingezahlt ${M.formatEuro(paid)}, Rückgeld ${M.formatEuro(change)}`,
+      cashierId,
+      shiftId: shift.id,
+      data: { bonNr: sale.bonNr, sessionId: session.id },
+      now,
+    });
+    return { sale, paid, change, plan: plan.plan };
+  }
+
+  /** Befüllen aus der Kassenlade. entries: [{value, count}]. Eine Buchung je Vorgang, gemeinsame Chargen-ID. */
+  function automatFill(d, { entries, cashierId, approverId = null, reason = 'Befüllung', now = new Date() }) {
+    const shift = requireShift(d);
+    assertNoSession(d);
+    const list = normalizeEntries(entries);
+    if (!list.length) throw fail('MENGE_UNGUELTIG', 'Keine Stückzahl erfasst');
+    const have = A().counts(d);
+    let sum = 0;
+    for (const e of list) {
+      const sl = slotFor(d, e.value);
+      if (have[e.value] + e.count > sl.capacity) {
+        throw fail('AUTOMAT_BEHAELTER_VOLL', `${A().label(e.value)}: Platz für höchstens ${sl.capacity - have[e.value]} Stück`);
+      }
+      sum += e.value * e.count;
+    }
+    const batch = 'AB' + pad(nextId(d, 'automatbatch'), 5);
+    for (const e of list) automatMove(d, { type: 'BEFUELLUNG', denom: e.value, count: e.count, ref: batch, reason, cashierId, shiftId: shift.id, now });
+    cashMove(d, { type: 'AUTOMAT_BEFUELLUNG', cents: -sum, reason: `Automat ${batch}`, cashierId, shiftId: shift.id, ref: batch, now });
+    logEvent(d, { type: 'AUTOMAT_BEFUELLUNG', text: `Automat befüllt (${batch}): ${M.formatEuro(sum)}`, cashierId, approverId, shiftId: shift.id, data: { batch }, now });
+    return { batch, cents: sum };
+  }
+
+  /** Entleeren in die Kassenlade. Es wird nie mehr entnommen, als im Automaten liegt. */
+  function automatEmpty(d, { entries, cashierId, approverId = null, reason = 'Entleerung', now = new Date() }) {
+    const shift = requireShift(d);
+    assertNoSession(d);
+    const list = normalizeEntries(entries);
+    if (!list.length) throw fail('MENGE_UNGUELTIG', 'Keine Stückzahl erfasst');
+    const have = A().counts(d);
+    let sum = 0;
+    for (const e of list) {
+      slotFor(d, e.value);
+      if (have[e.value] < e.count) throw fail('AUTOMAT_BESTAND_FEHLT', `${A().label(e.value)}: nur ${have[e.value]} Stück im Automaten`);
+      sum += e.value * e.count;
+    }
+    const batch = 'AB' + pad(nextId(d, 'automatbatch'), 5);
+    for (const e of list) automatMove(d, { type: 'ENTLEERUNG', denom: e.value, count: -e.count, ref: batch, reason, cashierId, shiftId: shift.id, now });
+    cashMove(d, { type: 'AUTOMAT_ENTLEERUNG', cents: sum, reason: `Automat ${batch}`, cashierId, shiftId: shift.id, ref: batch, now });
+    logEvent(d, { type: 'AUTOMAT_ENTLEERUNG', text: `Automat entleert (${batch}): ${M.formatEuro(sum)}`, cashierId, approverId, shiftId: shift.id, data: { batch }, now });
+    return { batch, cents: sum };
+  }
+
+  /** Betriebszustand setzen. Störungen brauchen einen Grund, Rückkehr zu Betriebsbereit nicht. */
+  function automatSetMode(d, { mode, reason = '', cashierId, approverId = null, now = new Date() }) {
+    if (!['BETRIEBSBEREIT', 'STOERUNG', 'AUSSER_BETRIEB'].includes(mode)) throw fail('STAMM_UNGUELTIG', 'Betriebszustand ungültig');
+    const text = (reason || '').trim();
+    if (mode !== 'BETRIEBSBEREIT' && !text) throw fail('GRUND_FEHLT', 'Bitte einen Grund für die Störung angeben');
+    const before = d.automat.mode;
+    const session = openAutomatSession(d);
+    d.automat.mode = mode;
+    d.automat.fault = mode === 'BETRIEBSBEREIT' ? null : { reason: text, since: now.toISOString(), sessionId: session ? session.id : null };
+    logEvent(d, {
+      type: 'AUTOMAT_BETRIEB',
+      text: `Automat: ${before} → ${mode}${text ? ' – ' + text : ''}`,
+      cashierId,
+      approverId,
+      shiftId: (currentShift(d) || {}).id || null,
+      now,
+    });
+  }
+
+  /** Behälter-Einstellungen: Annahme, Kapazität und Mindestbestand je Stückelung. */
+  function automatConfigure(d, { value, accepted, capacity, minimum, cashierId, now = new Date() }) {
+    const sl = slotFor(d, value);
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > 99999) throw fail('STAMM_UNGUELTIG', 'Kapazität: 1 bis 99999 Stück');
+    if (!Number.isInteger(minimum) || minimum < 0 || minimum > capacity) throw fail('STAMM_UNGUELTIG', 'Mindestbestand: 0 bis zur Kapazität');
+    if (capacity < (A().counts(d)[value] || 0)) throw fail('STAMM_UNGUELTIG', 'Kapazität ist kleiner als der aktuelle Bestand');
+    const before = `${sl.accepted ? 'angenommen' : 'gesperrt'}, Kapazität ${sl.capacity}, Minimum ${sl.minimum}`;
+    Object.assign(sl, { accepted: !!accepted, capacity, minimum });
+    const after = `${sl.accepted ? 'angenommen' : 'gesperrt'}, Kapazität ${sl.capacity}, Minimum ${sl.minimum}`;
+    if (before !== after) {
+      logEvent(d, { type: 'AUTOMAT_KONFIG', text: `Automat ${A().label(value)}: ${before} → ${after}`, cashierId, now });
+    }
+  }
+
+  /**
+   * Zählung des Automaten. counts = [{value, count}] (alle Stückelungen). Bucht nichts,
+   * sondern hält die Abweichung zum Soll fest, damit sie geprüft und nachgebucht werden kann.
+   */
+  function automatCount(d, { counts: entries, cashierId, now = new Date() }) {
+    const have = A().counts(d);
+    const rows = A().DENOMS.map((x) => {
+      const got = entries.find((e) => e.value === x.value);
+      const ist = got ? got.count : 0;
+      if (!Number.isInteger(ist) || ist < 0) throw fail('MENGE_UNGUELTIG', `Zählung ${A().label(x.value)} ungültig`);
+      return { value: x.value, soll: have[x.value] || 0, ist, diff: ist - (have[x.value] || 0) };
+    });
+    const sollCents = rows.reduce((s, r) => s + r.value * r.soll, 0);
+    const istCents = rows.reduce((s, r) => s + r.value * r.ist, 0);
+    const diffCents = istCents - sollCents;
+    const shift = currentShift(d);
+    logEvent(d, {
+      type: 'AUTOMAT_ZAEHLUNG',
+      text: `Automat gezählt: Soll ${M.formatEuro(sollCents)}, Ist ${M.formatEuro(istCents)}, Differenz ${M.formatEuro(diffCents)}`,
+      cashierId,
+      shiftId: shift ? shift.id : null,
+      data: { rows: rows.filter((r) => r.diff !== 0) },
+      now,
+    });
+    return { rows, sollCents, istCents, diffCents };
+  }
+
   POS.Ledger = {
     nextId,
     logEvent,
@@ -550,5 +883,17 @@
     upsertArticle,
     upsertStaff,
     upsertDeposit,
+    automatShiftSummary,
+    automatStart,
+    automatDeposit,
+    automatReject,
+    automatCancel,
+    automatComplete,
+    automatFill,
+    automatEmpty,
+    automatSetMode,
+    automatConfigure,
+    automatCount,
+    openAutomatSession,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

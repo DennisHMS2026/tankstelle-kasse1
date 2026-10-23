@@ -125,8 +125,10 @@
     if (!pfandOk) fehler.push('Pfand oder Leergutgutschrift stimmt nicht');
 
     // Zahlart und Rueckgeld
-    const payment = sale.payments.find((p) => p.type === 'BAR' || p.type === 'KARTE');
-    let zahlungOk = !!payment && payment.type === customer.payment;
+    // BAR – AUTOMAT zählt als Barzahlung, nur die Maschine nimmt das Geld an
+    const payment = sale.payments.find((p) => p.type === 'BAR' || p.type === 'KARTE' || p.type === 'AUTOMAT');
+    const zahlart = payment ? (payment.type === 'AUTOMAT' ? 'BAR' : payment.type) : null;
+    let zahlungOk = !!payment && zahlart === customer.payment;
     if (!zahlungOk) fehler.push(`Zahlart falsch (soll ${customer.payment})`);
     if (zahlungOk && customer.payment === 'BAR') {
       const change = payment.change || 0;

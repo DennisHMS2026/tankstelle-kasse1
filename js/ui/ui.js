@@ -31,7 +31,7 @@
    * Oeffnet einen Dialog.
    * actions: [{label, primary, danger, run}] - run() gibt false zurueck, um den Dialog offen zu lassen.
    */
-  function openModal({ title, content, actions = [], wide = false, dismissible = true, onClose = null }) {
+  function openModal({ title, content, actions = [], wide = false, dismissible = true, onClose = null, cls = '' }) {
     const errorBox = h('div', { class: 'modal-error', role: 'alert' });
     const entry = { onClose, dismissible };
     const btns = actions.map((a) =>
@@ -59,7 +59,7 @@
     );
     const box = h(
       'div',
-      { class: 'modal' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+      { class: 'modal' + (wide ? ' wide' : '') + (cls ? ' ' + cls : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'Dialog' },
       h(
         'div',
         { class: 'modal-head' },

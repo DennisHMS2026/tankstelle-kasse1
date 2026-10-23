@@ -9,7 +9,7 @@
   const POS = (root.POS = root.POS || {});
   const E = POS.Ean;
 
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   const CATEGORIES = [
     { id: 'MINERAL', name: 'Mineralwasser' },
@@ -237,6 +237,9 @@
       fuelAuto: false,
       fuelArrivalPerMin: 2,
       fuelFaultPerHour: 0,
+      // Bargeld-Automat (Schema v3). Simulierte Stoerungen wirken nur im Trainingsmodus.
+      automatSimFaults: false,
+      automatFaultRate: 0.12,
     };
   }
 
@@ -398,6 +401,51 @@
     return s;
   }
 
+  /**
+   * Schema v3: Bargeld-Automat. Bestehende Daten bleiben unveraendert. Der Automat startet mit
+   * seinem Anfangsbestand, der als eigene Bewegung (Typ INITIAL) gebucht wird. Offene Schichten
+   * erhalten den Automatenbestand als Startwert, damit der Schichtabschluss rechnen kann.
+   */
+  function upgradeToV3(s, now = new Date()) {
+    if (s.schemaVersion >= 3) return s;
+    s.settings = s.settings || {};
+    const defs = defaultSettings();
+    for (const k of ['automatSimFaults', 'automatFaultRate']) {
+      if (!(k in s.settings)) s.settings[k] = defs[k];
+    }
+    s.automat = s.automat || { mode: 'BETRIEBSBEREIT', fault: null, slots: POS.Automat.defaultSlots() };
+    s.automatMoves = s.automatMoves || [];
+    s.automatSession = s.automatSession || null;
+    s.automatSessions = s.automatSessions || [];
+    if (!s.automatMoves.length) {
+      const ts = now.toISOString();
+      let seq = s.counters.automatmove || 0;
+      for (const slot of s.automat.slots) {
+        if (!(slot.initial > 0)) continue;
+        seq += 1;
+        s.automatMoves.push({
+          id: seq,
+          ts,
+          shiftId: null,
+          type: 'INITIAL',
+          denom: slot.value,
+          count: slot.initial,
+          cents: slot.value * slot.initial,
+          ref: null,
+          reason: 'Anfangsbestand Automat',
+          cashierId: null,
+        });
+      }
+      s.counters = { ...s.counters, automatmove: seq };
+    }
+    const total = POS.Automat.totalCents(s);
+    for (const sh of s.shifts) {
+      if (sh.status === 'OFFEN' && sh.machineStartCents === undefined) sh.machineStartCents = total;
+    }
+    s.schemaVersion = 3;
+    return s;
+  }
+
   /** Vollstaendiger Startzustand fuer eine frische Installation (Schema v2). */
   function createInitialState(now = new Date()) {
     const articles = buildArticles();
@@ -426,7 +474,7 @@
       cart: null,
       counters: { article: articles.length, staff: STAFF.length, bon: 0, ret: 0, shift: 0, cashmove: 0, stock: 0, event: 0, voucher: 0, ean: 0 },
     };
-    return upgradeToV2(base);
+    return upgradeToV3(upgradeToV2(base), now);
   }
 
   POS.Seed = {
@@ -442,6 +490,7 @@
     defaultSettings,
     createInitialState,
     upgradeToV2,
+    upgradeToV3,
     endPrice,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

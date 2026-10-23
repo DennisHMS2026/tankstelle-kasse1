@@ -26,6 +26,8 @@
     ['berichte', 'Kassenberichte'],
     ['__', 'Kraftstoff'],
     ['tankstelle', 'Kraftstoffpreise & Tanklager'],
+    ['__', 'Bargeld-Automat'],
+    ['automat', 'Bestand, Befüllung, Störungen'],
     ['__', 'Shop'],
     ['artikel', 'Artikel'],
     ['preise', 'Shop-Preise'],
@@ -986,6 +988,13 @@
       h('select', { 'aria-label': `Schnelltaste ${i + 1}` }, h('option', { value: '', text: '– leer –' }), s.articles.map((a) => h('option', { value: a.id, text: a.name, selected: a.id === favs[i] })))
     );
     const testSound = (name) => () => POS.Sound.play(name, { force: true });
+    const display = h(
+      'select',
+      { 'aria-label': 'Darstellung' },
+      [['auto', 'Automatisch (nach Bildschirmgröße)'], ['kompakt', 'Kompakt (kleines iPad)'], ['standard', 'Standard (großer Bildschirm)']].map(([v, t]) =>
+        h('option', { value: v, text: t, selected: (s.settings.displayMode || 'auto') === v })
+      )
+    );
     return h(
       'div',
       {},
@@ -993,6 +1002,10 @@
         'Simulation und Training',
         h('div', { class: 'form grid2' }, field('Kartenablehnung (Simulation)', h('span', { class: 'range-row' }, reject, rejectOut)), h('label', { class: 'check' }, training, ' Trainingsmodus aktiv'), field('Trainingsstufe', diff)),
         h('p', { class: 'hint', text: 'Ohne Trainingsmodus funktioniert die Kasse ohne Aufgaben.' })
+      ),
+      section(
+        'Darstellung',
+        h('div', { class: 'form' }, field('Layout der Kasse', display), h('p', { class: 'hint', text: 'Automatisch wählt das Layout nach der verfügbaren Bildschirmgröße. Kompakt spart Platz auf kleinen iPads, Standard nutzt große Bildschirme voll aus. Die Touchflächen bleiben in beiden Varianten groß.' }))
       ),
       section(
         'Akustik',
@@ -1007,7 +1020,7 @@
         const rate = parseInt(reject.value, 10) / 100;
         const favorites = favSelects.map((x) => x.value).filter(Boolean);
         await app.mutate((d) => {
-          Object.assign(d.settings, { cardRejectRate: rate, soundOn: soundOn.checked, soundKeys: keys.checked, soundVolume: parseInt(vol.value, 10) / 100, trainingMode: training.checked, trainingDifficulty: diff.value, favorites });
+          Object.assign(d.settings, { displayMode: display.value, cardRejectRate: rate, soundOn: soundOn.checked, soundKeys: keys.checked, soundVolume: parseInt(vol.value, 10) / 100, trainingMode: training.checked, trainingDifficulty: diff.value, favorites });
         });
         toast('Gespeichert', 'ok');
       }), 'primary'))
@@ -1187,6 +1200,7 @@
     tasten: keymapView,
     sicherung: backupView,
     simulation: simView,
+    automat: () => POS.AutomatView.adminView(),
     systeminfo: systemInfoView,
   };
 

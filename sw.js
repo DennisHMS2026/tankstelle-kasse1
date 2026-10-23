@@ -1,5 +1,5 @@
 /* Service Worker – generiert von tools/build-pwa.mjs. Nicht von Hand ändern. */
-const VERSION = '40be2695d1da';
+const VERSION = '988e5bc30dbd';
 const CACHE = 'tankstelle-pos-' + VERSION;
 const ASSETS = [
  "./css/pos.css",
@@ -8,6 +8,7 @@ const ASSETS = [
  "./icons/icon-512-maskable.png",
  "./icons/icon-512.png",
  "./index.html",
+ "./js/core/automat.js",
  "./js/core/cart.js",
  "./js/core/ean.js",
  "./js/core/fuel.js",
@@ -24,6 +25,7 @@ const ASSETS = [
  "./js/hw/sound.js",
  "./js/ui/admin.js",
  "./js/ui/app.js",
+ "./js/ui/automat-view.js",
  "./js/ui/board.js",
  "./js/ui/pos.js",
  "./js/ui/pumps-view.js",

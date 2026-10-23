@@ -122,6 +122,10 @@
     },
 
     render() {
+      // Darstellung: automatisch (Bildschirmgröße), kompakt oder standard
+      const mode = (this.S && this.S.settings.displayMode) || 'auto';
+      document.body.classList.toggle('dm-compact', mode === 'kompakt');
+      document.body.classList.toggle('dm-standard', mode === 'standard');
       POS.Pos.render();
       POS.PumpView.update(this.S);
       if (POS.Admin.isVisible()) POS.Admin.render();
@@ -299,7 +303,6 @@
       document.getElementById('update-later').addEventListener('click', () => POS.Pwa.dismissUpdate());
       document.getElementById('nav-logout').addEventListener('click', () => this.logout());
       document.getElementById('view-board').replaceChildren(POS.Board.build());
-      document.getElementById('nav-board').addEventListener('click', () => this.showView('board'));
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !document.getElementById('view-board').hidden && !POS.Ui.modalOpen()) this.showView('kasse');
       });
