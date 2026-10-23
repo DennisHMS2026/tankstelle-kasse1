@@ -191,6 +191,7 @@
     const cashier = (d.staff.find((x) => x.id === shift.cashierId) || {}).name || shift.cashierId;
     const euro = (c) => M.formatPlain(c);
     const opt = (c) => (c === null || c === undefined ? '–' : euro(c));
+    const t = s.traffic || {};
     return [
       ['Schicht', shift.id],
       ['Kassierer', cashier],
@@ -224,6 +225,19 @@
       ['Automat erwarteter Bestand', opt(s.automatExpectedCents)],
       ['Automat gezählter Bestand', opt(shift.machineCountedCents)],
       ['Automatendifferenz', opt(shift.machineDiffCents)],
+      // Zahlungen und Verkehr (Simulation)
+      ['— Zahlungen und Verkehr —', ''],
+      ['Zahlungen BAR', String(s.zahlungenBar ?? 0)],
+      ['Zahlungen BAR – AUTOMAT', String(s.zahlungenAutomat ?? 0)],
+      ['Zahlungen KARTE', String(s.zahlungenKarte ?? 0)],
+      ['Gesamtumsatz', opt(s.gesamtumsatz)],
+      ['Ø Zahlungsdauer', s.zahlungsdauerSchnittMs === null || s.zahlungsdauerSchnittMs === undefined ? '–' : `${Math.round(s.zahlungsdauerSchnittMs / 1000)} s`],
+      ['Zahlungsstörungen', String(s.zahlungsstoerungen ?? 0)],
+      ['Kunden (Simulation)', String(t.kunden ?? '–')],
+      ['Wegfahrer (Warteschlange)', String(t.wegfahrer ?? '–')],
+      ['Längste Warteschlange', String(t.warteschlangeMax ?? '–')],
+      ['Ø Wartezeit', t.wartezeitSchnitt === null || t.wartezeitSchnitt === undefined ? '–' : `${Math.round(t.wartezeitSchnitt / 1000)} s`],
+      ['Stoßzeiten', String(t.stoss ?? '–')],
     ];
   }
 

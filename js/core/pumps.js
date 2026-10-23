@@ -305,7 +305,10 @@
         }
       }
     }
-    if (d.settings.fuelAuto && rng() < (d.settings.fuelArrivalPerMin || 0) / 60) {
+    if (d.settings.fuelAuto && d.settings.trafficOn !== false && POS.Traffic) {
+      // Betriebsphasen, Tageszeit, Warteschlange (siehe js/core/traffic.js)
+      if (POS.Traffic.step(d, now, rng)) changed = true;
+    } else if (d.settings.fuelAuto && rng() < (d.settings.fuelArrivalPerMin || 0) / 60) {
       const free = d.pumps.filter((p) => p.status === 'FREI' && fuelOf(d, p.fuelId).stockMl > 0);
       if (free.length) {
         const p = free[Math.floor(rng() * free.length)];

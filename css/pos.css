@@ -1022,3 +1022,17 @@ main, #view-kasse, .kasse, .kasse-body { overflow-x: hidden; max-width: 100%; }
 @media (max-width: 820px) and (orientation: portrait) {
   .automat-body { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Kartenterminal (Simulation): Zustände, verdeckte PIN */
+.terminal-dialog .terminal { display: flex; flex-direction: column; gap: 10px; }
+.terminal-dialog .terminal-screen { min-height: 150px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 16px; border-radius: 12px; background: #1d2530; color: #f4f7fb; font-size: 22px; text-align: center; transition: background .25s; }
+.terminal-dialog .terminal-screen > div:first-child { font-size: 28px; font-weight: 700; }
+.terminal-dialog .terminal-screen.idle { background: #26323f; }
+.terminal-dialog .terminal-screen.ok { background: #1b5e35; }
+.terminal-dialog .terminal-screen.busy { background: #1f3f6e; }
+.terminal-dialog .terminal-screen.bad { background: #6e1f1a; }
+.pin-dots { display: flex; justify-content: center; gap: 14px; font-size: 26px; color: var(--muted); min-height: 30px; }
+.pin-dots[hidden] { display: none; }
+.pin-dots .pin-dot.on { color: var(--text); }
+/* Verkehr: Statuszeile in der Kasse */
+.traffic-admin .card + .card { margin-top: 12px; }

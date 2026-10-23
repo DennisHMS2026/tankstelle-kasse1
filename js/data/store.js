@@ -113,7 +113,8 @@
     let state = obj;
     if (state.schemaVersion < 2) state = POS.Seed.upgradeToV2(state);
     if (state.schemaVersion < 3) state = POS.Seed.upgradeToV3(state);
-    for (const key of ['settings', 'categories', 'deposits', 'articles', 'staff', 'shifts', 'cashMoves', 'sales', 'stockMoves', 'vouchers', 'events', 'trainingResults', 'counters', 'fuels', 'pumps', 'tanks', 'automat', 'automatMoves', 'automatSessions']) {
+    if (state.schemaVersion < 4) state = POS.Seed.upgradeToV4(state);
+    for (const key of ['settings', 'categories', 'deposits', 'articles', 'staff', 'shifts', 'cashMoves', 'sales', 'stockMoves', 'vouchers', 'events', 'trainingResults', 'counters', 'fuels', 'pumps', 'tanks', 'automat', 'automatMoves', 'automatSessions', 'traffic']) {
       if (!(key in state)) throw new Error(`Datensicherung unvollständig: ${key} fehlt`);
     }
     state.trainingCustomer = state.trainingCustomer || null;
@@ -155,6 +156,10 @@
     for (const k of lists) if (!Array.isArray(s[k])) errs.push(`${k}: keine Liste`);
     if (errs.length) return errs;
     if (!s.counters || typeof s.counters !== 'object') errs.push('Zähler fehlen');
+    if (s.traffic) {
+      if (!POS.Traffic.PHASES.includes(s.traffic.phase)) errs.push('Verkehr: unbekannte Betriebsphase');
+      if (!Array.isArray(s.traffic.queue)) errs.push('Verkehr: Warteschlange ist keine Liste');
+    }
     if (!Array.isArray(s.automatMoves)) errs.push('automatMoves: keine Liste');
     else {
       for (const m of s.automatMoves) {

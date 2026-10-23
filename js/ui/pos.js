@@ -188,6 +188,7 @@
         ui.mode === 'PREIS' ? h('span', { class: 'badge amber', text: 'PREISABFRAGE' }) : null,
         ui.pendingQty > 1 ? h('span', { class: 'badge', text: `MENGE ${ui.pendingQty}x` }) : null,
         s.settings.trainingMode ? h('span', { class: 'badge violet', text: 'TRAINING' }) : null,
+        POS.Traffic.badge(s) ? h('span', { class: 'badge', text: POS.Traffic.badge(s) }) : null,
         POS.Store.mode === 'memory' ? h('span', { class: 'badge red', text: 'NUR ARBEITSSPEICHER' }) : null,
       ].filter(Boolean)
     );
@@ -729,7 +730,7 @@
       case 'AUTOMAT':
         return POS.AutomatView.open();
       case 'KARTE':
-        return openCard();
+        return POS.TerminalView.open();
       case 'BON_DRUCKEN':
         return printBon();
       case 'BON_STORNO':
@@ -1009,13 +1010,20 @@
   }
 
   /** Zahlung an den Warenkorb haengen und den Verkauf in EINER Transaktion buchen. */
-  async function commitPayment(addPayment) {
+  async function commitPayment(addPayment, durationMs = null) {
     let sale;
     await app().mutate((d) => {
       d.cart = addPayment(d.cart);
-      sale = L.finalizeSale(d, { cashierId: app().user.id });
+      sale = L.finalizeSale(d, { cashierId: app().user.id, durationMs });
     });
     return sale;
+  }
+
+  /** Genehmigte Kartenzahlung: einmal buchen, Beleg zeigen. Aufruf aus dem Terminal. */
+  async function finishCard(ref, durationMs) {
+    const sale = await commitPayment((c) => C.addCard(c, ref), durationMs);
+    POS.Sound.play('paid');
+    showSaleDone(sale);
   }
 
   function showSaleDone(sale) {
@@ -1048,64 +1056,6 @@
       },
     });
     render();
-  }
-
-  function openCard() {
-    const s = S();
-    const cart = s.cart;
-    if (!cart || !cart.lines.length) return toast('Kein Bon vorhanden', 'warn');
-    if (!L.currentShift(s)) return errorToast(R.fail('SCHICHT_NICHT_OFFEN', 'Keine offene Schicht'));
-    const totals = R.computeTotals(cart);
-    if (s.automatSession) return toast('Automat-Zahlung läuft – bitte dort abschließen oder abbrechen', 'warn');
-    if (totals.gesamt <= 0) return toast('Bei diesem Bon wird nichts per Karte kassiert', 'warn');
-    const due = C.dueCents(cart);
-    const screen = h('div', { class: 'terminal-screen', role: 'status' });
-    const status = h('div', { class: 'terminal-status' });
-    const setScreen = (lines, cls = '') => {
-      screen.className = 'terminal-screen ' + cls;
-      screen.replaceChildren(...lines.map((l) => h('div', { text: l })));
-    };
-    setScreen(['SIMULATION – KEINE ECHTE ZAHLUNG', `Betrag: ${M.formatEuro(due)}`, 'Karte vorhalten oder einstecken']);
-    let processing = false;
-    let entry = null;
-    const start = () => {
-      if (processing) return false;
-      processing = true;
-      setScreen(['Zahlung wird verarbeitet …', `Betrag: ${M.formatEuro(due)}`], 'busy');
-      entry.buttons[1].disabled = true;
-      setTimeout(async () => {
-        const result = R.simulateCard(Math.random, S().settings.cardRejectRate);
-        if (result.approved) {
-          try {
-            const sale = await commitPayment((c) => C.addCard(c, result.ref));
-            entry.close();
-            POS.Sound.play('paid');
-            showSaleDone(sale);
-          } catch (err) {
-            processing = false;
-            entry.buttons[1].disabled = false;
-            setScreen([`Buchung fehlgeschlagen: ${err.message}`, 'Kein Umsatz gebucht.'], 'bad');
-          }
-          return;
-        }
-        POS.Sound.play('declined');
-        processing = false;
-        setScreen(['ZAHLUNG ABGELEHNT', result.reason, 'Anderes Zahlungsmittel wählen oder erneut versuchen'], 'bad');
-        entry.buttons[1].disabled = false;
-        entry.buttons[1].textContent = 'Erneut versuchen';
-      }, 1200);
-      return false;
-    };
-    entry = openModal({
-      title: 'Kartenzahlung (F8) – Simulation',
-      wide: true,
-      content: h('div', { class: 'terminal' }, screen, status, h('p', { class: 'hint', text: 'Die Kundin bzw. der Kunde bestätigt die simulierte Zahlung mit „Zahlung starten“. Es findet keine reale Transaktion statt.' })),
-      actions: [
-        { label: 'Abbrechen' },
-        { label: 'Zahlung starten', primary: true, run: start },
-        { label: 'Bar stattdessen', run: () => { entry.close(); openCash(); } },
-      ],
-    });
   }
 
   // ------------------------------------------------------------ Leergut
@@ -1452,6 +1402,7 @@
     render,
     runAction,
     showSaleDone,
+    finishCard,
     handleCode,
     articleClicked,
     manualCode,

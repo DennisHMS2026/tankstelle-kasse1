@@ -128,6 +128,24 @@
       countedCents: shift.countedCents,
       diffCents: shift.diffCents,
       ...automatShiftSummary(d, shift),
+      ...paymentShiftSummary(d, shift),
+      traffic: POS.Traffic ? POS.Traffic.shiftStats(d, shift) : null,
+    };
+  }
+
+  /** Zahlungen und Störungen einer Schicht (Anzahl, Dauer, Gesamtumsatz). */
+  function paymentShiftSummary(d, shift) {
+    const sales = d.sales.filter((x) => x.shiftId === shift.id && x.kind === 'VERKAUF');
+    const has = (x, t) => x.payments.some((p) => p.type === t);
+    const timed = sales.filter((x) => typeof x.durationMs === 'number');
+    const faults = d.events.filter((e) => e.shiftId === shift.id && ['AUTOMAT_ABGELEHNT', 'KARTE_ABGELEHNT', 'AUTOMAT_BETRIEB'].includes(e.type)).length;
+    return {
+      zahlungenBar: sales.filter((x) => has(x, 'BAR')).length,
+      zahlungenAutomat: sales.filter((x) => has(x, 'AUTOMAT')).length,
+      zahlungenKarte: sales.filter((x) => has(x, 'KARTE')).length,
+      zahlungsdauerSchnittMs: timed.length ? Math.round(timed.reduce((s, x) => s + x.durationMs, 0) / timed.length) : null,
+      zahlungsstoerungen: faults,
+      gesamtumsatz: sales.reduce((s, x) => s + x.totals.gesamt, 0),
     };
   }
 
@@ -194,7 +212,7 @@
   /**
    * Schliesst einen Verkauf ab. Prueft alle Bedingungen, bevor irgendetwas geschrieben wird.
    */
-  function finalizeSale(d, { cashierId, now = new Date() }) {
+  function finalizeSale(d, { cashierId, now = new Date(), durationMs = null }) {
     const shift = requireShift(d);
     const cart = d.cart;
     if (!cart || cart.lines.length === 0) throw fail('WARENKORB_LEER', 'Der Warenkorb ist leer');
@@ -247,6 +265,7 @@
       payments: cart.payments.map((p) => ({ ...p })),
       simulation: true,
       training: null,
+      durationMs,
     };
     d.sales.push(sale);
 
@@ -715,7 +734,7 @@
    * Gelingt die exakte Herausgabe nicht, bleibt alles offen und nichts wird gebucht.
    * changeFault: simulierte Störung der Rückgeldeinheit (nur Trainingsmodus, siehe UI).
    */
-  function automatComplete(d, { cashierId, changeFault = false, now = new Date() }) {
+  function automatComplete(d, { cashierId, changeFault = false, now = new Date(), durationMs = null }) {
     const shift = requireShift(d);
     const session = requireSession(d);
     const cart = d.cart;
@@ -736,7 +755,7 @@
     // Ab hier nur noch Schreibzugriffe. Der Entwurf wird insgesamt gespeichert oder verworfen.
     // rueckgeld: tatsächlich ausgegebene Stücke (nicht eine Standardaufteilung)
     cart.payments.push({ type: 'AUTOMAT', cents: due, given: paid, change, sessionId: session.id, rueckgeld: plan.plan.map((p) => ({ ...p })) });
-    const sale = finalizeSale(d, { cashierId, now });
+    const sale = finalizeSale(d, { cashierId, now, durationMs });
     for (const step of plan.plan) {
       automatMove(d, { type: 'RUECKGELD', denom: step.value, count: -step.count, ref: sale.bonNr, cashierId, shiftId: shift.id, now });
     }

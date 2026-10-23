@@ -9,7 +9,7 @@
   const POS = (root.POS = root.POS || {});
   const E = POS.Ean;
 
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
   const CATEGORIES = [
     { id: 'MINERAL', name: 'Mineralwasser' },
@@ -240,6 +240,17 @@
       // Bargeld-Automat (Schema v3). Simulierte Stoerungen wirken nur im Trainingsmodus.
       automatSimFaults: false,
       automatFaultRate: 0.12,
+      // Zahlungs- und Verkehrssimulation (Schema v4)
+      paymentAuto: true,
+      difficulty: 'REALISTISCH',
+      simSpeed: 1,
+      payFaults: 1,
+      trafficOn: true,
+      queueMax: 3,
+      queueWaitMin: 4,
+      evCashFaults: true,
+      evCardFaults: true,
+      evSlowPayments: true,
     };
   }
 
@@ -446,6 +457,20 @@
     return s;
   }
 
+  /** Schema v4: Zahlungs- und Verkehrssimulation. Neue Einstellungen mit Standardwerten, Verkehrszustand neu. */
+  function upgradeToV4(s, now = new Date()) {
+    if (s.schemaVersion >= 4) return s;
+    s.settings = s.settings || {};
+    const defs = defaultSettings();
+    for (const k of ['paymentAuto', 'difficulty', 'simSpeed', 'payFaults', 'trafficOn', 'queueMax', 'queueWaitMin', 'evCashFaults', 'evCardFaults', 'evSlowPayments']) {
+      if (!(k in s.settings)) s.settings[k] = defs[k];
+    }
+    s.traffic = s.traffic || POS.Traffic.initialState(now);
+    s.traffic.stats = s.traffic.stats || {};
+    s.schemaVersion = 4;
+    return s;
+  }
+
   /** Vollstaendiger Startzustand fuer eine frische Installation (Schema v2). */
   function createInitialState(now = new Date()) {
     const articles = buildArticles();
@@ -474,7 +499,7 @@
       cart: null,
       counters: { article: articles.length, staff: STAFF.length, bon: 0, ret: 0, shift: 0, cashmove: 0, stock: 0, event: 0, voucher: 0, ean: 0 },
     };
-    return upgradeToV3(upgradeToV2(base), now);
+    return upgradeToV4(upgradeToV3(upgradeToV2(base), now), now);
   }
 
   POS.Seed = {
@@ -491,6 +516,7 @@
     createInitialState,
     upgradeToV2,
     upgradeToV3,
+    upgradeToV4,
     endPrice,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -28,6 +28,7 @@
   let busy = false;
   let message = null; // { kind, text } unter der Anzeige
   let dropValue = null; // zuletzt eingeworfenes Stück (für die Einwurf-Animation)
+  let run = null; // laufender automatischer Kunde: { plan, i, timers, startedAt, extra }
 
   const COINS = A.DENOMS.filter((x) => x.kind === 'MUENZE');
   const NOTES = A.DENOMS.filter((x) => x.kind === 'SCHEIN');
@@ -66,6 +67,141 @@
       }
     }
     showDialog();
+    if (S().settings.paymentAuto !== false) startAuto();
+  }
+
+  // ------------------------------------------------------------ Automatischer Kunde
+
+  const speedOf = () => S().settings.simSpeed || 1;
+
+  /** Timer des laufenden Ablaufs. Sie laufen mit der Simulationsgeschwindigkeit. */
+  function later(fn, ms) {
+    const r = run;
+    const id = setTimeout(
+      () => {
+        if (r) r.timers.delete(id);
+        if (run === r) fn();
+      },
+      Math.max(0, ms) / speedOf()
+    );
+    if (r) r.timers.add(id);
+  }
+
+  function stopRun() {
+    if (run) run.timers.forEach((id) => clearTimeout(id));
+    run = null;
+  }
+
+  function difficultyOf(s) {
+    return POS.Sim.DIFFICULTY[s.settings.difficulty] || POS.Sim.DIFFICULTY.REALISTISCH;
+  }
+
+  /**
+   * Der virtuelle Kunde zahlt den offenen Betrag selbstständig. Nach einer Unterbrechung wird nur
+   * der noch offene Rest geplant. Verpasste Einwürfe werden nicht nachgeholt.
+   */
+  function startAuto() {
+    const s = S();
+    const sess = s.automatSession;
+    if (!sess || run || phase) return;
+    const remaining = Math.max(0, sess.dueCents - A.sessionPaid(sess));
+    const plan = POS.Sim.planCash(Math.random, {
+      dueCents: remaining,
+      difficulty: difficultyOf(s),
+      events: { coins: s.settings.evCashFaults !== false, slow: s.settings.evSlowPayments !== false },
+      faults: s.settings.payFaults ?? 1,
+    });
+    run = { plan, i: 0, timers: new Set(), startedAt: Date.now(), extra: 0 };
+    const strategy = POS.Sim.CASH_STRATEGIES.find((x) => x.key === plan.strategy);
+    message = { kind: 'info', text: `Kunde zahlt automatisch (${strategy ? strategy.label : ''}) …` };
+    render();
+    if (!plan.inserts.length) return finishRun();
+    later(() => tryInsert(), plan.inserts[0].pauseMs);
+  }
+
+  async function tryInsert() {
+    const r = run;
+    if (!r) return;
+    const ins = r.plan.inserts[r.i];
+    const cashierId = app().user.id;
+    try {
+      if (ins.fault) {
+        // Kleines Problem: Automat weist das Stück ab, der Kunde versucht es selbst erneut
+        const reason = ins.fault;
+        ins.fault = null;
+        await app().mutate((d) => L.automatReject(d, { value: ins.value, reason, cashierId }));
+        if (run !== r) return;
+        POS.Sound.play('declined');
+        flash('bad', `${A.label(ins.value)}: ${A.FAULT_LABEL[reason]} – Kunde versucht es erneut`);
+        return later(() => tryInsert(), 900);
+      }
+      if (ins.serious) {
+        // Schwerwiegendes Problem: Der Kassierer muss die Störung beheben
+        await app().mutate((d) => L.automatReject(d, { value: ins.value, reason: ins.seriousKind, cashierId }));
+        return stopForAction(`${A.FAULT_LABEL[ins.seriousKind]}. Nach „Störung beheben“ geht die Zahlung weiter.`);
+      }
+      await app().mutate((d) => L.automatDeposit(d, { value: ins.value, cashierId }));
+      if (run !== r) return;
+      POS.Sound.play('key');
+      dropValue = ins.value;
+      r.i += 1;
+      flash('ok', `${A.label(ins.value)} angenommen`);
+      return stepOrFinish(r);
+    } catch (err) {
+      stopForAction(err.message);
+    }
+  }
+
+  function stepOrFinish(r) {
+    if (run !== r) return;
+    const next = r.plan.inserts[r.i];
+    if (next) later(() => tryInsert(), next.pauseMs);
+    else finishRun();
+  }
+
+  function finishRun() {
+    const r = run;
+    if (!r) return;
+    later(() => tryComplete(), r.plan.changeDelayMs);
+  }
+
+  async function tryComplete() {
+    const r = run;
+    if (!r) return;
+    const durationMs = Math.round((Date.now() - r.startedAt) * speedOf());
+    let res;
+    try {
+      res = await doComplete(durationMs);
+    } catch (err) {
+      if (err.code === 'WECHSELGELD_NICHT_MOEGLICH' && r.extra < 2 && run === r) {
+        // Rückgeld so nicht möglich: Der Kunde legt einen größeren Schein nach. Höchstens zweimal.
+        r.extra += 1;
+        message = { kind: 'info', text: 'Rückgeld ist so nicht möglich. Der Kunde legt einen Schein nach.' };
+        render();
+        try {
+          await app().mutate((d) => L.automatDeposit(d, { value: r.extra === 1 ? 1000 : 2000, cashierId: app().user.id }));
+        } catch (e2) {
+          return stopForAction(e2.message);
+        }
+        return later(() => tryComplete(), 800);
+      }
+      return stopForAction(`${err.message}. Zahlungsart wechseln oder abbrechen.`);
+    }
+    stopRun();
+    closeDialog();
+    POS.Pos.showSaleDone(res.sale);
+  }
+
+  /** Stoppt den Ablauf und zeigt, was der Kassierer tun muss. Die Zahlung bleibt offen. */
+  function stopForAction(text) {
+    stopRun();
+    message = { kind: 'bad', text };
+    POS.Sound.play('error');
+    render();
+  }
+
+  function closeDialog() {
+    if (entry) entry.close();
   }
 
   function showDialog() {
@@ -82,6 +218,7 @@
         { label: 'Zahlung abschließen', primary: true, run: complete },
       ],
       onClose: () => {
+        stopRun();
         entry = null;
         view = null;
         phase = null;
@@ -128,8 +265,8 @@
     const plan = sess && change > 0 ? A.planChange(change, A.counts(s)) : sess && open === 0 ? { ok: true, plan: [] } : null;
     const state = phase === 'ABGESCHLOSSEN' ? 'ZAHLUNG_ABGESCHLOSSEN' : phase === 'RUECKGELD' ? 'RUECKGELDAUSGABE' : A.machineState(s);
     const machineBlocked = s.automat.mode !== 'BETRIEBSBEREIT';
-    const keysOn = !!sess && !phase && !machineBlocked && !busy;
-    const canFinish = !!sess && !phase && open === 0 && !!plan && plan.ok && !busy;
+    const keysOn = !!sess && !phase && !machineBlocked && !busy && !run;
+    const canFinish = !!sess && !phase && !run && open === 0 && !!plan && plan.ok && !busy;
 
     const warnings = A.slotWarnings(s).slice(0, 4).map((w) =>
       w.kind === 'VOLL'
@@ -236,11 +373,8 @@
     }
   }
 
-  /** Abschluss: Rückgeld aus dem Bestand, dann Animation, dann Bon und Dialog schließen. */
-  async function complete() {
-    if (busy) return false;
-    busy = true;
-    const e = entry;
+  /** Bezahlung buchen und die Rückgeldausgabe animieren. Wirft, wenn das Rückgeld nicht exakt möglich ist. */
+  async function doComplete(durationMs) {
     const failChange = simulationOn('WECHSEL');
     phase = 'RUECKGELD';
     phaseData = null;
@@ -248,14 +382,12 @@
     let res;
     try {
       await app().mutate((d) => {
-        res = L.automatComplete(d, { cashierId: app().user.id, changeFault: !!failChange });
+        res = L.automatComplete(d, { cashierId: app().user.id, changeFault: !!failChange, durationMs });
       });
     } catch (err) {
       phase = null;
-      busy = false;
       render();
-      POS.Sound.play('error');
-      throw err; // Fehler wird im Dialog angezeigt, der Dialog bleibt offen
+      throw err;
     }
     POS.Sound.play('paid');
     phaseData = { sale: res.sale, paid: res.paid, change: res.change, plan: res.plan };
@@ -264,10 +396,27 @@
     phase = 'ABGESCHLOSSEN';
     render();
     await sleep(900);
-    busy = false;
-    if (e) e.close();
     phase = null;
     phaseData = null;
+    return res;
+  }
+
+  /** Manueller Abschluss (Schaltfläche). Der Fehler bleibt im Dialog sichtbar. */
+  async function complete() {
+    if (busy) return false;
+    busy = true;
+    const e = entry;
+    let res;
+    try {
+      stopRun();
+      res = await doComplete(null);
+    } catch (err) {
+      POS.Sound.play('error');
+      throw err;
+    } finally {
+      busy = false;
+    }
+    if (e) e.close();
     POS.Pos.showSaleDone(res.sale);
     return false;
   }
@@ -276,6 +425,7 @@
   async function cancelFlow() {
     const sess = S().automatSession;
     if (!sess || busy) return false;
+    stopRun();
     const paid = A.sessionPaid(sess);
     let reason = '';
     if (paid > 0) {
@@ -338,6 +488,7 @@
     try {
       await app().mutate((d) => L.automatSetMode(d, { mode: 'BETRIEBSBEREIT', cashierId: app().user.id, approverId: approver }));
       toast('Störung behoben', 'ok');
+      if (S().automatSession && S().settings.paymentAuto !== false) startAuto();
     } catch (err) {
       errorToast(err);
     }

@@ -77,6 +77,7 @@
         pumps: structuredClone(S.pumps),
         tanks: structuredClone(S.tanks),
         fuels: structuredClone(S.fuels),
+        traffic: structuredClone(S.traffic),
         counters: { ...S.counters },
         events: [],
       };
@@ -84,7 +85,7 @@
       if (running && gap > PAUSE_MS) changed = POS.Pumps.interrupt(light, new Date(), 'Pause (App nicht aktiv)') > 0;
       else changed = POS.Pumps.advance(light, new Date(), Math.random);
       const heartbeat = running && nowMs - this.lastSave > HEARTBEAT_MS;
-      const next = { ...S, pumps: light.pumps, tanks: light.tanks, fuels: light.fuels, counters: light.counters, events: S.events.concat(light.events) };
+      const next = { ...S, pumps: light.pumps, tanks: light.tanks, fuels: light.fuels, traffic: light.traffic, counters: light.counters, events: S.events.concat(light.events) };
       this.S = next;
       if (!changed && !heartbeat) return false;
       next.updatedAt = new Date().toISOString();

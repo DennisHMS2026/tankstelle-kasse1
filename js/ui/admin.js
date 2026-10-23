@@ -26,6 +26,7 @@
     ['berichte', 'Kassenberichte'],
     ['__', 'Kraftstoff'],
     ['tankstelle', 'Kraftstoffpreise & Tanklager'],
+    ['verkehr', 'Verkehr & Zahlungssimulation'],
     ['__', 'Bargeld-Automat'],
     ['automat', 'Bestand, Befüllung, Störungen'],
     ['__', 'Shop'],
@@ -1201,6 +1202,7 @@
     sicherung: backupView,
     simulation: simView,
     automat: () => POS.AutomatView.adminView(),
+    verkehr: () => POS.TrafficView.adminView(),
     systeminfo: systemInfoView,
   };
 
